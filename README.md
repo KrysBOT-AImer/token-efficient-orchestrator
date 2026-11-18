@@ -53,13 +53,15 @@ A high-precision, token-efficient cognitive orchestration system for **Google An
 
 ---
 
-## 📂 Folder Structure
+## 📂 Folder Structure & Platform Editions
+
+The repository ships a **Windows-ready root** alongside complete, self-contained **`windows/`** and **`linux/`** drop-in editions:
 
 ```text
-orchestrator/
+orchestrator/                           # Root edition (Windows-ready default: `python -B`)
 ├── .gitignore                          # Excludes Python bytecode, caches, and env files
 ├── LICENSE                             # MIT License
-├── hooks.json                          # PreToolUse guard hook registration
+├── hooks.json                          # PreToolUse guard hook registration (`python -B`)
 ├── hooks/
 │   └── orchestrator_guard.py           # Pure-dispatcher, swarm, & subagent boundary guard (v1.0)
 ├── plugin.json                         # Plugin manifest (v1.0.0)
@@ -69,10 +71,32 @@ orchestrator/
 ├── skills/
 │   └── token-efficient-orchestrator/
 │       └── SKILL.md                    # Full Three-Family routing matrix & operational templates
-└── tests/
-    ├── __init__.py
-    └── test_orchestrator_guard.py      # Automated unit & regression test suite
+├── tests/
+│   ├── __init__.py
+│   └── test_orchestrator_guard.py      # Automated unit & regression test suite
+├── windows/                            # Drop-in Windows edition (`python -B`, see windows/README.md)
+│   ├── hooks.json
+│   ├── plugin.json
+│   ├── README.md
+│   ├── hooks/orchestrator_guard.py
+│   ├── rules/AGENTS.md
+│   ├── skills/token-efficient-orchestrator/SKILL.md
+│   └── tests/{__init__.py,test_orchestrator_guard.py}
+└── linux/                              # Drop-in Linux edition (`python3 -B` + `+x`, see linux/README.md)
+    ├── hooks.json
+    ├── plugin.json
+    ├── README.md
+    ├── hooks/orchestrator_guard.py
+    ├── rules/AGENTS.md
+    ├── skills/token-efficient-orchestrator/SKILL.md
+    └── tests/{__init__.py,test_orchestrator_guard.py}
 ```
+
+| Edition | Hook Command | Target Directory | Notes |
+| :--- | :--- | :--- | :--- |
+| **Root (`/`)** | `python -B hooks/orchestrator_guard.py` | Windows or systems with `python` in `PATH` | Windows-ready default at repository root. |
+| **Windows (`windows/`)** | `python -B hooks/orchestrator_guard.py` | `%USERPROFILE%\.gemini\config\plugins\orchestrator\` | Self-contained drop-in Windows package ([windows/README.md](windows/README.md)). |
+| **Linux (`linux/`)** | `python3 -B hooks/orchestrator_guard.py` | `~/.gemini/config/plugins/orchestrator/` | Self-contained drop-in Linux package with executable `.py` files ([linux/README.md](linux/README.md)). |
 
 ---
 
@@ -102,10 +126,26 @@ orchestrator/
 > [!IMPORTANT]
 > **Do not blindly drop this plugin into a production setup.** Review `hooks/orchestrator_guard.py`, `rules/AGENTS.md`, and `skills/token-efficient-orchestrator/SKILL.md` first, or ask your own AI coding agent to inspect the repository, tailor the guard rules and model IDs to your environment, and handle the installation for you.
 
-If you want to install manually after reviewing and adapting the configuration:
-1. Copy or clone this repository into your Google Antigravity plugins directory (e.g., `~/.gemini/config/plugins/orchestrator/`).
-2. Review and customize any workspace-specific rules, model IDs, and circuit-breaker thresholds to match your workflow.
-3. Enable the `orchestrator` plugin in Antigravity's Plugins Manager.
+### Windows (`%USERPROFILE%\.gemini\config\plugins\orchestrator\`)
+Copy the root edition or `windows/` edition (`python -B hooks/orchestrator_guard.py`):
+
+```powershell
+New-Item -ItemType Directory -Force "$env:USERPROFILE\.gemini\config\plugins\orchestrator" | Out-Null
+Copy-Item -Recurse -Force ".\windows\*" "$env:USERPROFILE\.gemini\config\plugins\orchestrator\"
+```
+
+### Linux (`~/.gemini/config/plugins/orchestrator/`)
+Copy the `linux/` edition (`python3 -B hooks/orchestrator_guard.py` with executable `.py` files):
+
+```bash
+mkdir -p ~/.gemini/config/plugins/orchestrator
+cp -a ./linux/. ~/.gemini/config/plugins/orchestrator/
+chmod +x ~/.gemini/config/plugins/orchestrator/hooks/orchestrator_guard.py
+```
+
+Then:
+1. Review and customize any workspace-specific rules, model IDs, and circuit-breaker thresholds to match your workflow.
+2. Enable the `orchestrator` plugin in Antigravity's **Plugins Manager**.
 
 Optional environment configuration:
 * `ORCHESTRATOR_STATE_MODIFYING_MCP_TOOLS`: Comma-separated list of additional MCP tool names or suffixes to block in Read-Only sessions (`research`, `@councillor`, RO `@auditor`).
@@ -114,16 +154,19 @@ Optional environment configuration:
 
 ## 🧪 Running Tests
 
-Run the unit and regression test suite without writing `.pyc` bytecode caches:
+Run the unit and regression test suites without writing `.pyc` bytecode caches:
 
 ```bash
 python3 -B -m unittest discover -s tests -v
+python3 -B -m unittest discover -s windows/tests -v
+python3 -B -m unittest discover -s linux/tests -v
 ```
 
-Or with `pytest`:
+Or on Windows:
 
-```bash
-python3 -B -m pytest tests -v
+```powershell
+python -B -m unittest discover -s tests -v
+python -B -m unittest discover -s windows/tests -v
 ```
 
 ---

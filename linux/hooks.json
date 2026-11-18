@@ -1,0 +1,17 @@
+{
+  "orchestrator-pure-dispatcher-guard": {
+    "enabled": true,
+    "PreToolUse": [
+      {
+        "matcher": ".*",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "python3 -B hooks/orchestrator_guard.py",
+            "timeout": 10
+          }
+        ]
+      }
+    ]
+  }
+}
