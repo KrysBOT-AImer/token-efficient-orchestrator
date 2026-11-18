@@ -41,9 +41,12 @@ Enforces:
      - Blocks state-modifying commands in run_command.
 """
 
+import io
 import json
 import os
+import posixpath
 import re
+import select
 import stat
 import sys
 import threading
@@ -65,6 +68,8 @@ ALLOWED_ORCHESTRATION_TOOLS = {
     "read_board",
     "swarm_wait",
     "run_workflow",
+    "enter_plan_mode",
+    "exit_plan_mode",
 }
 
 SUBAGENT_RO_MAX_STEPS = 25
@@ -166,8 +171,15 @@ def _is_state_modifying_mcp_tool(name: str) -> bool:
     )
 
 MUTATING_CMD_PATTERNS = [
-    r"\b(Set-Content|Out-File|Add-Content|Remove-Item|Move-Item|Copy-Item|New-Item|Rename-Item|del|rm|rmdir|mkdir)\b",
-    r"git\s+(commit|push|reset|checkout|clean|merge|rebase)",
+    r"\b(Set-Content|Out-File|Add-Content|Remove-Item|Move-Item|Copy-Item|New-Item|Rename-Item|del|rm|rmdir|mkdir|mv|cp|touch|chmod|chown|chgrp|truncate|shred|unlink|ln|install|dd|mkfs|mount|umount|patch)\b",
+    r"\bsed\s+(?:-[a-zA-Z]*i|--in-place)\b",
+    r"\bperl\s+-[a-zA-Z]*i\b",
+    r"\b(?:apt(?:-get)?|dnf|yum)\s+(?:install|remove|purge|upgrade|dist-upgrade|update|autoremove)\b",
+    r"\bpacman\s+-(?:S|R|U)[a-zA-Z]*\b",
+    r"\bpip3?\s+(?:install|uninstall)\b",
+    r"\bnpm\s+(?:install|uninstall|ci|publish)\b",
+    r"\bsystemctl\s+(?:start|stop|restart|reload|enable|disable|mask|unmask)\b",
+    r"git\s+(commit|push|reset|checkout|clean|merge|rebase|cherry-pick|revert|am|apply)\b",
     r"open\s*\([^)]*['\"][wa\+]['\"]",
     r"\.write_text\s*\(",
     r"\.write_bytes\s*\(",
@@ -249,8 +261,8 @@ FORK_IDENTITY_REGEX = re.compile(
     r"You are @[a-zA-Z0-9_-]+\.\s+Everything before this turn is @"
 )
 FORK_NOTICE_REGEX = re.compile(
-    r"^<fork_notice>\s*$.*?This conversation was branched from a previous conversation\s*\(ID:\s*([a-f0-9-]{36})\)",
-    re.IGNORECASE | re.MULTILINE | re.DOTALL,
+    r"^<fork_notice>[ \t]*\r?$\s*[\s\S]{0,400}?This conversation was branched from a previous conversation\s*\(ID:\s*([a-f0-9-]{36})\)",
+    re.IGNORECASE | re.MULTILINE,
 )
 FORK_ASSIGNMENT_LINE_REGEX = re.compile(
     r"^You have just started\.\s+Your assignment \(recorded on the board",
@@ -304,7 +316,12 @@ MAX_RETURN_MESSAGE_CHARS = 2500
 
 MAX_SIBLING_BRAIN_SCAN = 25
 SIBLING_SCAN_TIME_BUDGET_SEC = 1.5
+MAX_FILE_READ_BYTES = 16 * 1024 * 1024
+MAX_STDIN_BYTES = 10 * 1024 * 1024
+MAX_MESSAGES_SCAN = 128
+MAX_PARENT_ID_CACHE_ENTRIES = 64
 _PARENT_ID_CACHE: Dict[str, str] = {}
+_PARENT_ID_CACHE_LOCK = threading.Lock()
 
 PATH_KEYS = (
     "Path",
@@ -316,21 +333,65 @@ PATH_KEYS = (
     "File",
 )
 
+_WIN_DRIVE_REGEX = re.compile(r"^[a-zA-Z]:(?:/|$)")
+_CACHE_MISS = object()
+
+
+def _norm_sep(p: str) -> str:
+    return str(p or "").strip().replace("\\", "/")
+
+
+def _path_basename(p: str) -> str:
+    s = _norm_sep(p).rstrip("/")
+    return posixpath.basename(s)
+
+
+def _path_dirname(p: str) -> str:
+    s = _norm_sep(p).rstrip("/")
+    return posixpath.dirname(s)
+
+
+def _is_explicit_abs_or_home_path(p: str) -> bool:
+    s = _norm_sep(p)
+    if not s:
+        return False
+    if s.startswith("file://"):
+        return True
+    return s.startswith("/") or s == "~" or s.startswith("~/") or bool(_WIN_DRIVE_REGEX.match(s))
+
 
 def normalize_path(p: str) -> str:
-    if not p:
+    if not p or not isinstance(p, str):
         return ""
+    s = _norm_sep(p)
+    if not s:
+        return ""
+    if s.startswith("file://"):
+        s = s[7:]
+        if re.match(r"^/[a-zA-Z]:/", s):
+            s = s[1:]
+    if s == "~" or s.startswith("~/"):
+        s = _norm_sep(os.path.expanduser(s))
+    if _WIN_DRIVE_REGEX.match(s):
+        return posixpath.normpath(s).lower()
     try:
-        return os.path.normcase(os.path.abspath(p)).replace("\\", "/")
+        if s.startswith("/"):
+            return os.path.normcase(posixpath.normpath(s)).replace("\\", "/")
+        return os.path.normcase(os.path.abspath(s)).replace("\\", "/")
     except Exception:
-        return os.path.normcase(os.path.normpath(p)).replace("\\", "/")
+        return os.path.normcase(posixpath.normpath(s)).replace("\\", "/")
 
 
 def is_inside_directory(target_path: str, base_dir: str) -> bool:
     if not target_path or not base_dir:
         return False
+    if _is_explicit_abs_or_home_path(base_dir) and not _is_explicit_abs_or_home_path(target_path):
+        return False
     norm_target = normalize_path(target_path)
     norm_base = normalize_path(base_dir).rstrip("/")
+    if _WIN_DRIVE_REGEX.match(norm_target) or _WIN_DRIVE_REGEX.match(norm_base):
+        norm_target = norm_target.lower()
+        norm_base = norm_base.lower()
     if norm_target == norm_base:
         return True
     return norm_target.startswith(norm_base + "/")
@@ -352,21 +413,35 @@ def is_allowed_read_path(target_path: str, artifact_dir: Optional[str]) -> bool:
     if artifact_dir and is_inside_directory(target_path, artifact_dir):
         return True
 
+    if not _is_explicit_abs_or_home_path(target_path):
+        return False
+
     norm_target = normalize_path(target_path)
+    norm_lower = norm_target.lower()
 
-    # 2. Inside builtin skills or config plugins (for reading SKILL.md / plugin definitions)
-    if "/.gemini/antigravity/builtin/skills" in norm_target:
-        return True
-    if "/.gemini/config/plugins" in norm_target:
+    # 2. Inside builtin skills/plugins or config plugins/skills
+    allowed_markers = (
+        "/.gemini/antigravity/builtin/skills",
+        "/.gemini/antigravity/builtin/plugins",
+        "/.gemini/antigravity-cli/builtin/",
+        "/.gemini/antigravity-ide/builtin/",
+        "/.gemini/config/plugins",
+        "/.gemini/config/skills",
+    )
+    if any(marker in norm_lower for marker in allowed_markers):
         return True
 
-    home_dir = normalize_path(os.path.expanduser("~"))
-    builtin_skills = f"{home_dir}/.gemini/antigravity/builtin/skills"
-    config_plugins = f"{home_dir}/.gemini/config/plugins"
-    if is_inside_directory(target_path, builtin_skills) or is_inside_directory(
-        target_path, config_plugins
+    home_dir = normalize_path(os.path.expanduser("~")).rstrip("/")
+    for rel_dir in (
+        ".gemini/antigravity/builtin/skills",
+        ".gemini/antigravity/builtin/plugins",
+        ".gemini/antigravity-cli/builtin",
+        ".gemini/antigravity-ide/builtin",
+        ".gemini/config/plugins",
+        ".gemini/config/skills",
     ):
-        return True
+        if is_inside_directory(target_path, f"{home_dir}/{rel_dir}"):
+            return True
 
     return False
 
@@ -375,18 +450,36 @@ def _read_text_with_retry(
     path: str, max_bytes: Optional[int] = None, retries: int = 3
 ) -> str:
     """
-    Reads UTF-8 text from `path` with brief backoff retries for transient Windows
-    sharing violations (WinError 32/33 / PermissionError).
+    Reads UTF-8 text from regular file `path` without blocking on FIFOs/devices
+    and with brief backoff retries for transient sharing violations.
     """
-    if not path or not os.path.isfile(path):
+    if not path:
         return ""
+    try:
+        st = os.stat(path)
+    except OSError:
+        return ""
+    if not stat.S_ISREG(st.st_mode):
+        return ""
+
+    limit = (
+        int(max_bytes)
+        if (max_bytes is not None and max_bytes >= 0)
+        else MAX_FILE_READ_BYTES
+    )
+    open_flags = os.O_RDONLY | getattr(os, "O_NONBLOCK", 0)
+
     for attempt in range(max(1, retries)):
+        fd: Optional[int] = None
         try:
-            with open(path, "r", encoding="utf-8", errors="replace") as f:
-                if max_bytes is not None and max_bytes >= 0:
-                    return f.read(max_bytes)
-                return f.read()
-        except PermissionError:
+            fd = os.open(path, open_flags)
+            if not stat.S_ISREG(os.fstat(fd).st_mode):
+                return ""
+            f = os.fdopen(fd, "r", encoding="utf-8", errors="replace")
+            fd = None
+            with f:
+                return f.read(limit)
+        except (PermissionError, BlockingIOError):
             if attempt + 1 < retries:
                 time.sleep(0.02 * (attempt + 1))
                 continue
@@ -397,20 +490,118 @@ def _read_text_with_retry(
                 time.sleep(0.02 * (attempt + 1))
                 continue
             return ""
+        finally:
+            if fd is not None:
+                try:
+                    os.close(fd)
+                except OSError:
+                    pass
     return ""
 
 
-class TranscriptCache:
-    """
-    Thread-safe bounded cache of parsed JSONL transcript records keyed by
-    normalized path and validated by (st_mtime_ns, st_size).
-    """
+class _BoundedStampCache:
+    """Thread-safe bounded cache keyed by normalized path and validated by stamp."""
 
     def __init__(self, max_entries: int = 16) -> None:
         self.max_entries = max(1, int(max_entries))
         self._lock = threading.Lock()
-        self._entries: Dict[str, Tuple[Tuple[int, int], List[Dict[str, Any]]]] = {}
+        self._entries: Dict[str, Tuple[Any, Any]] = {}
         self._order: List[str] = []
+
+    def _get(self, norm_key: str, stamp: Any) -> Any:
+        with self._lock:
+            cached = self._entries.get(norm_key)
+            if cached is not None and cached[0] == stamp:
+                return cached[1]
+        return _CACHE_MISS
+
+    def _put(self, norm_key: str, stamp: Any, value: Any) -> None:
+        with self._lock:
+            if norm_key in self._entries:
+                self._entries[norm_key] = (stamp, value)
+                if norm_key in self._order:
+                    self._order.remove(norm_key)
+                self._order.append(norm_key)
+            else:
+                while len(self._order) >= self.max_entries:
+                    oldest = self._order.pop(0)
+                    self._entries.pop(oldest, None)
+                self._entries[norm_key] = (stamp, value)
+                self._order.append(norm_key)
+
+    def clear(self) -> None:
+        with self._lock:
+            self._entries.clear()
+            self._order.clear()
+
+
+class MessagesCache(_BoundedStampCache):
+    """
+    Thread-safe bounded cache of parsed .system_generated/messages/*.json dicts
+    keyed by normalized directory path and validated by directory mtime and file stamps.
+    """
+
+    def get_messages(self, messages_dir: str) -> List[Dict[str, Any]]:
+        if not messages_dir or not isinstance(messages_dir, str):
+            return []
+        try:
+            dir_st = os.stat(messages_dir)
+        except OSError:
+            return []
+        if not stat.S_ISDIR(dir_st.st_mode):
+            return []
+
+        try:
+            filenames = sorted(
+                fn for fn in os.listdir(messages_dir)
+                if fn.endswith(".json") and fn.lower() != "read.json"
+            )[:MAX_MESSAGES_SCAN]
+        except OSError:
+            return []
+
+        file_entries: List[Tuple[str, str, int, int]] = []
+        for fn in filenames:
+            msg_file = os.path.join(messages_dir, fn)
+            try:
+                fst = os.stat(msg_file)
+            except OSError:
+                continue
+            if stat.S_ISREG(fst.st_mode):
+                file_entries.append((fn, msg_file, fst.st_mtime_ns, fst.st_size))
+
+        stamp = (
+            dir_st.st_mtime_ns,
+            tuple((fn, mtime, sz) for fn, _, mtime, sz in file_entries),
+        )
+        norm_key = normalize_path(messages_dir)
+        cached = self._get(norm_key, stamp)
+        if cached is not _CACHE_MISS:
+            return cached
+
+        messages: List[Dict[str, Any]] = []
+        for _, msg_file, _, _ in file_entries:
+            try:
+                raw_msg = _read_text_with_retry(msg_file, max_bytes=262144)
+                if not raw_msg:
+                    continue
+                msg_data = json.loads(raw_msg)
+                if isinstance(msg_data, dict):
+                    messages.append(msg_data)
+            except Exception:
+                continue
+
+        self._put(norm_key, stamp, messages)
+        return messages
+
+
+MESSAGES_CACHE = MessagesCache(max_entries=16)
+
+
+class TranscriptCache(_BoundedStampCache):
+    """
+    Thread-safe bounded cache of parsed JSONL transcript records keyed by
+    normalized path and validated by (st_mtime_ns, st_size).
+    """
 
     def get_records(self, path: str) -> List[Dict[str, Any]]:
         if not path or not isinstance(path, str):
@@ -424,11 +615,9 @@ class TranscriptCache:
 
         stamp = (st.st_mtime_ns, st.st_size)
         norm_key = normalize_path(path)
-
-        with self._lock:
-            cached = self._entries.get(norm_key)
-            if cached is not None and cached[0] == stamp:
-                return cached[1]
+        cached = self._get(norm_key, stamp)
+        if cached is not _CACHE_MISS:
+            return cached
 
         raw_text = _read_text_with_retry(path)
         if not raw_text:
@@ -446,25 +635,12 @@ class TranscriptCache:
             if isinstance(rec, dict):
                 records.append(rec)
 
-        with self._lock:
-            if norm_key in self._entries:
-                self._entries[norm_key] = (stamp, records)
-                if norm_key in self._order:
-                    self._order.remove(norm_key)
-                self._order.append(norm_key)
-            else:
-                while len(self._order) >= self.max_entries:
-                    oldest = self._order.pop(0)
-                    self._entries.pop(oldest, None)
-                self._entries[norm_key] = (stamp, records)
-                self._order.append(norm_key)
-
+        self._put(norm_key, stamp, records)
         return records
 
     def clear(self) -> None:
-        with self._lock:
-            self._entries.clear()
-            self._order.clear()
+        super().clear()
+        MESSAGES_CACHE.clear()
 
 
 TRANSCRIPT_CACHE = TranscriptCache(max_entries=16)
@@ -568,6 +744,31 @@ def _extract_role_from_text(text: str) -> Optional[str]:
     return None
 
 
+def _iter_origin_messages(
+    artifact_dir: Optional[str],
+) -> List[Tuple[Dict[str, Any], str, Dict[str, Any], str]]:
+    """
+    Returns parsed (msg_data, tc_name, tc_args, msg_title) entries from
+    `<artifact_dir>/.system_generated/messages`, skipping child send_message
+    and non-parent peer messages.
+    """
+    if not artifact_dir or not isinstance(artifact_dir, str):
+        return []
+    messages_dir = os.path.join(artifact_dir, ".system_generated", "messages")
+    results: List[Tuple[Dict[str, Any], str, Dict[str, Any], str]] = []
+    for msg_data in MESSAGES_CACHE.get_messages(messages_dir):
+        src_meta = msg_data.get("sourceMetadata") or {}
+        tc = (src_meta.get("tool") or {}).get("toolCall") or {}
+        tc_name, tc_args = _extract_tc_name_args(tc)
+        if tc_name == "send_message":
+            continue
+        msg_title = str((msg_data.get("renderDetails") or {}).get("messageTitle") or "")
+        if msg_title.startswith("Message from ") and msg_title != "Message from Parent Agent":
+            continue
+        results.append((msg_data, tc_name, tc_args, msg_title))
+    return results
+
+
 def _get_swarm_role(
     artifact_dir: Optional[str],
     transcript_path: Optional[str],
@@ -584,52 +785,27 @@ def _get_swarm_role(
 
     has_non_envelope_swarm_marker = False
 
-    if artifact_dir and isinstance(artifact_dir, str):
-        messages_dir = os.path.join(artifact_dir, ".system_generated", "messages")
-        if os.path.isdir(messages_dir):
-            try:
-                for filename in sorted(os.listdir(messages_dir)):
-                    if filename.lower() == "read.json" or not filename.endswith(".json"):
-                        continue
-                    msg_file = os.path.join(messages_dir, filename)
-                    if not os.path.isfile(msg_file):
-                        continue
-                    try:
-                        raw_msg = _read_text_with_retry(msg_file)
-                        if not raw_msg:
-                            continue
-                        msg_data = json.loads(raw_msg)
-                        if not isinstance(msg_data, dict):
-                            continue
-                        src_meta = msg_data.get("sourceMetadata") or {}
-                        tc = (src_meta.get("tool") or {}).get("toolCall") or {}
-                        tc_name, tc_args = _extract_tc_name_args(tc)
-                        if tc_name == "send_message":
-                            continue
-                        msg_title = str((msg_data.get("renderDetails") or {}).get("messageTitle") or "")
-                        if msg_title.startswith("Message from ") and msg_title != "Message from Parent Agent":
-                            continue
-                        if tc_name == "swarm":
-                            has_non_envelope_swarm_marker = True
-                            swarm_name = str(tc_args.get("name") or "").strip().lstrip("@").lower()
-                            if swarm_name:
-                                return swarm_name
-                        msg_content = str(msg_data.get("content") or msg_data.get("text") or "")
-                        if msg_content and not _is_incoming_message_envelope(msg_content):
-                            if (
-                                FORK_NOTICE_REGEX.search(msg_content)
-                                or FORK_ASSIGNMENT_LINE_REGEX.search(msg_content)
-                                or FORK_IDENTITY_LINE_REGEX.search(msg_content)
-                                or SWARM_WORKER_LINE_REGEX.search(msg_content)
-                            ):
-                                has_non_envelope_swarm_marker = True
-                            role = _extract_role_from_text(msg_content)
-                            if role:
-                                return role
-                    except Exception:
-                        continue
-            except Exception:
-                pass
+    for msg_data, tc_name, tc_args, _ in _iter_origin_messages(artifact_dir):
+        try:
+            if tc_name == "swarm":
+                has_non_envelope_swarm_marker = True
+                swarm_name = str(tc_args.get("name") or "").strip().lstrip("@").lower()
+                if swarm_name:
+                    return swarm_name
+            msg_content = str(msg_data.get("content") or msg_data.get("text") or "")
+            if msg_content and not _is_incoming_message_envelope(msg_content):
+                if (
+                    FORK_NOTICE_REGEX.search(msg_content)
+                    or FORK_ASSIGNMENT_LINE_REGEX.search(msg_content)
+                    or FORK_IDENTITY_LINE_REGEX.search(msg_content)
+                    or SWARM_WORKER_LINE_REGEX.search(msg_content)
+                ):
+                    has_non_envelope_swarm_marker = True
+                role = _extract_role_from_text(msg_content)
+                if role:
+                    return role
+        except Exception:
+            continue
 
     if transcript_path and isinstance(transcript_path, str):
         try:
@@ -701,46 +877,21 @@ def _is_persistent_swarm_worker(
         except Exception:
             pass
 
-    if artifact_dir and isinstance(artifact_dir, str):
-        messages_dir = os.path.join(artifact_dir, ".system_generated", "messages")
-        if os.path.isdir(messages_dir):
-            try:
-                for filename in sorted(os.listdir(messages_dir)):
-                    if filename.lower() == "read.json" or not filename.endswith(".json"):
-                        continue
-                    msg_file = os.path.join(messages_dir, filename)
-                    if not os.path.isfile(msg_file):
-                        continue
-                    try:
-                        raw_txt = _read_text_with_retry(msg_file)
-                        if not raw_txt:
-                            continue
-                        msg_data = json.loads(raw_txt)
-                        if not isinstance(msg_data, dict):
-                            continue
-                        src_meta = msg_data.get("sourceMetadata") or {}
-                        tc = (src_meta.get("tool") or {}).get("toolCall") or {}
-                        tc_name, _ = _extract_tc_name_args(tc)
-                        if tc_name == "send_message":
-                            continue
-                        msg_title = str((msg_data.get("renderDetails") or {}).get("messageTitle") or "")
-                        if msg_title.startswith("Message from ") and msg_title != "Message from Parent Agent":
-                            continue
-                        if tc_name == "swarm":
-                            return True
-                        msg_content = str(msg_data.get("content") or msg_data.get("text") or "")
-                        if msg_content and not _is_incoming_message_envelope(msg_content):
-                            if (
-                                FORK_NOTICE_REGEX.search(msg_content)
-                                or FORK_ASSIGNMENT_LINE_REGEX.search(msg_content)
-                                or FORK_IDENTITY_LINE_REGEX.search(msg_content)
-                                or SWARM_WORKER_LINE_REGEX.search(msg_content)
-                            ):
-                                return True
-                    except Exception:
-                        continue
-            except Exception:
-                pass
+    for msg_data, tc_name, _, _ in _iter_origin_messages(artifact_dir):
+        try:
+            if tc_name == "swarm":
+                return True
+            msg_content = str(msg_data.get("content") or msg_data.get("text") or "")
+            if msg_content and not _is_incoming_message_envelope(msg_content):
+                if (
+                    FORK_NOTICE_REGEX.search(msg_content)
+                    or FORK_ASSIGNMENT_LINE_REGEX.search(msg_content)
+                    or FORK_IDENTITY_LINE_REGEX.search(msg_content)
+                    or SWARM_WORKER_LINE_REGEX.search(msg_content)
+                ):
+                    return True
+        except Exception:
+            continue
 
     return False
 
@@ -795,69 +946,46 @@ def is_subagent_session(payload: Dict[str, Any]) -> bool:
             pass
 
     artifact_dir = payload.get("artifactDirectoryPath")
-    if artifact_dir and isinstance(artifact_dir, str):
-        messages_dir = os.path.join(artifact_dir, ".system_generated", "messages")
+    for data, tool_call_name, _, msg_title in _iter_origin_messages(artifact_dir):
         try:
-            if os.path.isdir(messages_dir):
-                for filename in sorted(os.listdir(messages_dir)):
-                    if filename.lower() == "read.json" or not filename.endswith(".json"):
-                        continue
-                    msg_file = os.path.join(messages_dir, filename)
-                    try:
-                        if not os.path.isfile(msg_file):
-                            continue
-                        raw_txt = _read_text_with_retry(msg_file)
-                        if not raw_txt:
-                            continue
-                        try:
-                            data = json.loads(raw_txt)
-                        except Exception:
-                            continue
-                        if not isinstance(data, dict):
-                            continue
+            if msg_title == "Message from Parent Agent":
+                return True
 
-                        src_meta = data.get("sourceMetadata") or {}
-                        tool_call_name = (
-                            ((src_meta.get("tool") or {}).get("toolCall") or {}).get("name")
-                        )
-                        if tool_call_name == "send_message":
-                            continue
+            if tool_call_name in ("invoke_subagent", "swarm"):
+                return True
 
-                        render_details = data.get("renderDetails") or {}
-                        msg_title = str(render_details.get("messageTitle") or "")
-                        if (
-                            msg_title.startswith("Message from ")
-                            and msg_title != "Message from Parent Agent"
-                        ):
-                            continue
+            msg_content = str(data.get("content") or data.get("text") or "")
+            if not msg_content or _is_incoming_message_envelope(msg_content):
+                continue
 
-                        if msg_title == "Message from Parent Agent":
-                            return True
-
-                        if tool_call_name in ("invoke_subagent", "swarm"):
-                            return True
-
-                        msg_content = str(data.get("content") or data.get("text") or "")
-                        if not msg_content or _is_incoming_message_envelope(msg_content):
-                            continue
-
-                        if (
-                            FORK_NOTICE_REGEX.search(msg_content)
-                            or FORK_ASSIGNMENT_LINE_REGEX.search(msg_content)
-                            or FORK_IDENTITY_LINE_REGEX.search(msg_content)
-                            or SWARM_WORKER_LINE_REGEX.search(msg_content)
-                            or (
-                                SUBAGENT_MARKER_1 in msg_content
-                                and SUBAGENT_MARKER_2 in msg_content
-                            )
-                        ):
-                            return True
-                    except Exception:
-                        continue
+            if (
+                FORK_NOTICE_REGEX.search(msg_content)
+                or FORK_ASSIGNMENT_LINE_REGEX.search(msg_content)
+                or FORK_IDENTITY_LINE_REGEX.search(msg_content)
+                or SWARM_WORKER_LINE_REGEX.search(msg_content)
+                or (
+                    SUBAGENT_MARKER_1 in msg_content
+                    and SUBAGENT_MARKER_2 in msg_content
+                )
+            ):
+                return True
         except Exception:
-            pass
+            continue
 
     return False
+
+
+def _put_parent_id_cache(cache_key: str, parent_id: str) -> None:
+    if not cache_key or not parent_id:
+        return
+    with _PARENT_ID_CACHE_LOCK:
+        if (
+            cache_key not in _PARENT_ID_CACHE
+            and len(_PARENT_ID_CACHE) >= MAX_PARENT_ID_CACHE_ENTRIES
+        ):
+            oldest_key = next(iter(_PARENT_ID_CACHE))
+            _PARENT_ID_CACHE.pop(oldest_key, None)
+        _PARENT_ID_CACHE[cache_key] = parent_id
 
 
 def _save_parent_id_cache(
@@ -865,8 +993,7 @@ def _save_parent_id_cache(
 ) -> None:
     if not parent_id or (curr_conv_id and parent_id.lower() == curr_conv_id.lower()):
         return
-    if cache_key:
-        _PARENT_ID_CACHE[cache_key] = parent_id
+    _put_parent_id_cache(cache_key, parent_id)
     if brain_dir and curr_conv_id:
         sys_gen_dir = os.path.join(brain_dir, curr_conv_id, ".system_generated")
         if os.path.isdir(sys_gen_dir):
@@ -907,8 +1034,9 @@ def _get_parent_conversation_id(
         tp_hint = normalize_path(str((payload or {}).get("transcriptPath") or ""))
         cache_key = f"tp:{tp_hint}::{curr_conv_id.lower()}" if tp_hint else ""
 
-    if cache_key and cache_key in _PARENT_ID_CACHE:
-        cached = _PARENT_ID_CACHE[cache_key]
+    if cache_key:
+        with _PARENT_ID_CACHE_LOCK:
+            cached = _PARENT_ID_CACHE.get(cache_key)
         if cached and cached.lower() != curr_conv_id.lower():
             return cached
 
@@ -929,8 +1057,7 @@ def _get_parent_conversation_id(
                             and cached_pid.lower() != curr_conv_id.lower()
                             and (not cached_cid or cached_cid.lower() == curr_conv_id.lower())
                         ):
-                            if cache_key:
-                                _PARENT_ID_CACHE[cache_key] = cached_pid
+                            _put_parent_id_cache(cache_key, cached_pid)
                             return cached_pid
                 except Exception:
                     pass
@@ -972,9 +1099,9 @@ def _get_parent_conversation_id(
                     continue
                 rec_content = rec.get("content")
                 if isinstance(rec_content, str):
-                    search_text = rec_content
+                    search_text = rec_content[:16384]
                 else:
-                    search_text = json.dumps(rec, ensure_ascii=False)
+                    search_text = json.dumps(rec, ensure_ascii=False)[:16384]
 
                 is_envelope = _is_incoming_message_envelope(search_text)
 
@@ -1030,60 +1157,53 @@ def _get_parent_conversation_id(
     # 2. Check current conversation's .system_generated/messages/*.json
     if brain_dir:
         msgs_dir = os.path.join(brain_dir, curr_conv_id, ".system_generated", "messages")
-        if os.path.isdir(msgs_dir):
+        preferred_sender = None
+        fallback_sender = None
+        for mdata in MESSAGES_CACHE.get_messages(msgs_dir):
             try:
-                preferred_sender = None
-                fallback_sender = None
-                for fname in sorted(os.listdir(msgs_dir)):
-                    if not fname.endswith(".json") or fname.lower() == "read.json":
-                        continue
-                    mpath = os.path.join(msgs_dir, fname)
-                    try:
-                        raw_msg = _read_text_with_retry(mpath)
-                        if not raw_msg:
-                            continue
-                        mdata = json.loads(raw_msg)
-                        if not isinstance(mdata, dict):
-                            continue
-                        src_meta = mdata.get("sourceMetadata") or {}
-                        tc_name = (
-                            ((src_meta.get("tool") or {}).get("toolCall") or {}).get("name")
-                        )
-                        msg_title = str(
-                            (mdata.get("renderDetails") or {}).get("messageTitle") or ""
-                        )
-                        if (
-                            msg_title.startswith("Message from ")
-                            and msg_title != "Message from Parent Agent"
-                        ):
-                            continue
-                        sender = mdata.get("sender") or src_meta.get("sender")
-                        if sender and uuid_pattern.match(str(sender)):
-                            sender_str = str(sender)
-                            if sender_str.lower() != curr_conv_id.lower():
-                                if tc_name in ("invoke_subagent", "swarm"):
-                                    preferred_sender = sender_str
-                                    break
-                                if not fallback_sender:
-                                    fallback_sender = sender_str
-                    except Exception:
-                        continue
-                chosen_sender = preferred_sender or fallback_sender
-                if chosen_sender:
-                    _save_parent_id_cache(
-                        cache_key, curr_conv_id, brain_dir, chosen_sender
-                    )
-                    return chosen_sender
+                src_meta = mdata.get("sourceMetadata") or {}
+                tc_name = (
+                    ((src_meta.get("tool") or {}).get("toolCall") or {}).get("name")
+                )
+                msg_title = str(
+                    (mdata.get("renderDetails") or {}).get("messageTitle") or ""
+                )
+                if (
+                    msg_title.startswith("Message from ")
+                    and msg_title != "Message from Parent Agent"
+                ):
+                    continue
+                sender = mdata.get("sender") or src_meta.get("sender")
+                if sender and uuid_pattern.match(str(sender)):
+                    sender_str = str(sender)
+                    if sender_str.lower() != curr_conv_id.lower():
+                        if tc_name in ("invoke_subagent", "swarm"):
+                            preferred_sender = sender_str
+                            break
+                        if not fallback_sender:
+                            fallback_sender = sender_str
             except Exception:
-                pass
+                continue
+        chosen_sender = preferred_sender or fallback_sender
+        if chosen_sender:
+            _save_parent_id_cache(
+                cache_key, curr_conv_id, brain_dir, chosen_sender
+            )
+            return chosen_sender
 
     # 3. Bounded, mtime-desc sorted sibling brain scan: find recent parent referencing curr_conv_id
     if brain_dir and os.path.isdir(brain_dir):
         try:
             candidates: List[Tuple[int, str, str]] = []
             curr_lower = curr_conv_id.lower()
+            scan_start = time.monotonic()
             with os.scandir(brain_dir) as it:
                 for entry in it:
+                    if (
+                        len(candidates) >= MAX_SIBLING_BRAIN_SCAN
+                        and (time.monotonic() - scan_start) >= SIBLING_SCAN_TIME_BUDGET_SEC
+                    ):
+                        break
                     if entry.name.lower() == curr_lower:
                         continue
                     try:
@@ -1102,7 +1222,6 @@ def _get_parent_conversation_id(
                         candidates.append((st.st_mtime_ns, entry.name, sibling_transcript))
 
             candidates.sort(key=lambda item: item[0], reverse=True)
-            scan_start = time.monotonic()
             for _, sibling_id, sibling_transcript in candidates[:MAX_SIBLING_BRAIN_SCAN]:
                 if (time.monotonic() - scan_start) >= SIBLING_SCAN_TIME_BUDGET_SEC:
                     break
@@ -1166,39 +1285,24 @@ def _detect_read_only_from_messages_or_first_prompt(
     # 1. Check .system_generated/messages/*.json for invoke_subagent TypeName or swarm RO flags
     if artifact_dir and isinstance(artifact_dir, str):
         messages_dir = os.path.join(artifact_dir, ".system_generated", "messages")
-        if os.path.isdir(messages_dir):
+        for msg_data in MESSAGES_CACHE.get_messages(messages_dir):
             try:
-                for filename in sorted(os.listdir(messages_dir)):
-                    if filename.lower() == "read.json" or not filename.endswith(".json"):
-                        continue
-                    msg_file = os.path.join(messages_dir, filename)
-                    if not os.path.isfile(msg_file):
-                        continue
-                    try:
-                        raw_msg = _read_text_with_retry(msg_file)
-                        if not raw_msg:
-                            continue
-                        msg_data = json.loads(raw_msg)
-                        if not isinstance(msg_data, dict):
-                            continue
-                        src_meta = msg_data.get("sourceMetadata") or {}
-                        tc = (src_meta.get("tool") or {}).get("toolCall") or {}
-                        tc_name, tc_args = _extract_tc_name_args(tc)
-                        if tc_name == "invoke_subagent":
-                            t_name = str(tc_args.get("TypeName") or "").strip().lower()
-                            if t_name == "research":
-                                return True
-                            if t_name == "self":
-                                return False
-                        if is_auditor_role:
-                            brief_text = str(tc_args.get("brief") or "") if tc_name == "swarm" else ""
-                            msg_text = str(msg_data.get("content") or msg_data.get("text") or "")
-                            if AUDITOR_RO_FLAG_REGEX.search(brief_text) or AUDITOR_RO_FLAG_REGEX.search(msg_text):
-                                return True
-                    except Exception:
-                        continue
+                src_meta = msg_data.get("sourceMetadata") or {}
+                tc = (src_meta.get("tool") or {}).get("toolCall") or {}
+                tc_name, tc_args = _extract_tc_name_args(tc)
+                if tc_name == "invoke_subagent":
+                    t_name = str(tc_args.get("TypeName") or "").strip().lower()
+                    if t_name == "research":
+                        return True
+                    if t_name == "self":
+                        return False
+                if is_auditor_role:
+                    brief_text = str(tc_args.get("brief") or "") if tc_name == "swarm" else ""
+                    msg_text = str(msg_data.get("content") or msg_data.get("text") or "")
+                    if AUDITOR_RO_FLAG_REGEX.search(brief_text) or AUDITOR_RO_FLAG_REGEX.search(msg_text):
+                        return True
             except Exception:
-                pass
+                continue
 
     # 2. Check ONLY the first USER_INPUT / USER_EXPLICIT step (or assignment for @auditor) in transcript.jsonl
     if transcript_path and isinstance(transcript_path, str):
@@ -1234,49 +1338,18 @@ def _detect_mcp_only_from_messages_or_first_prompt(
     Checks whether a subagent was invoked with [MCP_ONLY] in its Role or Prompt.
     """
     # 1. Check .system_generated/messages/*.json for invoke_subagent args
-    if artifact_dir and isinstance(artifact_dir, str):
-        messages_dir = os.path.join(artifact_dir, ".system_generated", "messages")
-        if os.path.isdir(messages_dir):
-            try:
-                for filename in sorted(os.listdir(messages_dir)):
-                    if filename.lower() == "read.json" or not filename.endswith(".json"):
-                        continue
-                    msg_file = os.path.join(messages_dir, filename)
-                    if not os.path.isfile(msg_file):
-                        continue
-                    try:
-                        raw_msg = _read_text_with_retry(msg_file)
-                        if not raw_msg:
-                            continue
-                        msg_data = json.loads(raw_msg)
-                        if not isinstance(msg_data, dict):
-                            continue
-                        src_meta = msg_data.get("sourceMetadata") or {}
-                        tc = (src_meta.get("tool") or {}).get("toolCall") or {}
-                        if tc.get("name") == "send_message":
-                            continue
-                        msg_title = str((msg_data.get("renderDetails") or {}).get("messageTitle") or "")
-                        if msg_title.startswith("Message from ") and msg_title != "Message from Parent Agent":
-                            continue
-                        if tc.get("name") == "invoke_subagent":
-                            tc_args = tc.get("args") or tc.get("arguments") or {}
-                            if isinstance(tc_args, str):
-                                try:
-                                    tc_args = json.loads(tc_args)
-                                except Exception:
-                                    tc_args = {}
-                            if isinstance(tc_args, dict):
-                                role_text = str(tc_args.get("Role") or "")
-                                prompt_text = str(tc_args.get("Prompt") or "")
-                                if "[mcp_only]" in role_text.lower() or "[mcp_only]" in prompt_text.lower():
-                                    return True
-                        raw_msg_text = str(msg_data.get("content") or msg_data.get("text") or "")
-                        if "[mcp_only]" in raw_msg_text.lower():
-                            return True
-                    except Exception:
-                        continue
-            except Exception:
-                pass
+    for msg_data, tc_name, tc_args, _ in _iter_origin_messages(artifact_dir):
+        try:
+            if tc_name == "invoke_subagent":
+                role_text = str(tc_args.get("Role") or "")
+                prompt_text = str(tc_args.get("Prompt") or "")
+                if "[mcp_only]" in role_text.lower() or "[mcp_only]" in prompt_text.lower():
+                    return True
+            raw_msg_text = str(msg_data.get("content") or msg_data.get("text") or "")
+            if "[mcp_only]" in raw_msg_text.lower():
+                return True
+        except Exception:
+            continue
 
     # 2. Check transcript.jsonl first prompt or system message
     if transcript_path and isinstance(transcript_path, str):
@@ -1375,13 +1448,22 @@ def get_subagent_profile(data: Dict[str, Any]) -> Dict[str, Any]:
             retry_gap_seconds = 0.0
             pending_429_dt: Optional[datetime] = None
 
-            parent_id_for_wrap = None
-            curr_cid = data.get("conversationId") or (
-                os.path.basename(os.path.normpath(artifact_dir)) if artifact_dir else ""
-            )
-            b_dir = os.path.dirname(os.path.normpath(artifact_dir)) if artifact_dir else ""
-            if curr_cid:
-                parent_id_for_wrap = _get_parent_conversation_id(curr_cid, b_dir, data)
+            _UNRESOLVED = object()
+            parent_id_for_wrap: Any = _UNRESOLVED
+
+            def _resolve_parent_id_lazy() -> Optional[str]:
+                nonlocal parent_id_for_wrap
+                if parent_id_for_wrap is _UNRESOLVED:
+                    curr_cid = data.get("conversationId") or (
+                        _path_basename(artifact_dir) if artifact_dir else ""
+                    )
+                    b_dir = _path_dirname(artifact_dir) if artifact_dir else ""
+                    parent_id_for_wrap = (
+                        _get_parent_conversation_id(curr_cid, b_dir, data)
+                        if curr_cid
+                        else None
+                    )
+                return parent_id_for_wrap
 
             for record in TRANSCRIPT_CACHE.get_records(transcript_path):
                 source = record.get("source")
@@ -1418,20 +1500,28 @@ def get_subagent_profile(data: Dict[str, Any]) -> Dict[str, Any]:
                 is_prompt = False
                 is_wrap_up = False
                 if _is_system_message_record(record):
-                    is_parent_directive = (
-                        "Message from Parent Agent" in content
-                        or (
-                            "[Message]" in content
-                            and "sender=" in content
-                            and FORK_ASSIGNMENT_MARKER not in content
-                            and "[swarm] new board message" not in content
-                            and (
-                                not parent_id_for_wrap
-                                or f"sender={parent_id_for_wrap.lower()}" in content.lower()
-                                or "sender=parent" in content.lower()
-                            )
-                        )
-                    )
+                    is_parent_directive = False
+                    if "Message from Parent Agent" in content:
+                        is_parent_directive = True
+                    elif (
+                        len(content) < 350
+                        and "[Message]" in content
+                        and "sender=" in content
+                        and FORK_ASSIGNMENT_MARKER not in content
+                        and "[swarm] new board message" not in content
+                        and WRAP_UP_REGEX.search(content)
+                    ):
+                        content_lower = content.lower()
+                        if "sender=parent" in content_lower:
+                            is_parent_directive = True
+                        else:
+                            resolved_pid = _resolve_parent_id_lazy()
+                            if (
+                                not resolved_pid
+                                or f"sender={resolved_pid.lower()}" in content_lower
+                            ):
+                                is_parent_directive = True
+
                     if is_parent_directive and len(content) < 350 and WRAP_UP_REGEX.search(content):
                         is_wrap_up = True
                     elif (
@@ -1513,7 +1603,7 @@ def inspect_target_subagent(recipient: str, payload: Dict[str, Any]) -> Dict[str
     if not target_transcript_path:
         artifact_dir = payload.get("artifactDirectoryPath")
         if artifact_dir and isinstance(artifact_dir, str):
-            brain_root = os.path.dirname(os.path.normpath(artifact_dir))
+            brain_root = _path_dirname(artifact_dir)
         else:
             brain_root = os.path.expanduser("~/.gemini/antigravity/brain")
         target_artifact_dir = os.path.join(brain_root, recipient)
@@ -1643,9 +1733,9 @@ def _inspect_parent_escalation_state(payload: Dict[str, Any]) -> Dict[str, Any]:
                 or (
                     "[Message]" in content
                     and re.search(
-                        r"(?:@?councillor\b.*(?:STATUS:|STRATEGY:|RECOMMENDATION:)|from\s+@?councillor\b)",
-                        content,
-                        re.IGNORECASE | re.DOTALL,
+                        r"(?:@?councillor\b[\s\S]{0,2000}?(?:STATUS:|STRATEGY:|RECOMMENDATION:)|from\s+@?councillor\b)",
+                        content[:16384],
+                        re.IGNORECASE,
                     )
                 )
             ):
@@ -1770,9 +1860,9 @@ def evaluate_pre_tool_use(payload: Dict[str, Any]) -> Dict[str, Any]:
         # Block Reading Stale Scratch Directories from Past Conversations
         curr_conv_id = payload.get("conversationId")
         if not curr_conv_id and artifact_dir:
-            curr_conv_id = os.path.basename(os.path.normpath(artifact_dir))
+            curr_conv_id = _path_basename(artifact_dir)
 
-        brain_dir = os.path.dirname(os.path.normpath(artifact_dir)) if artifact_dir else None
+        brain_dir = _path_dirname(artifact_dir) if artifact_dir else None
         if not brain_dir and payload.get("appDataDir"):
             brain_dir = os.path.join(str(payload.get("appDataDir")), "brain")
 
@@ -1976,7 +2066,7 @@ def evaluate_pre_tool_use(payload: Dict[str, Any]) -> Dict[str, Any]:
 
         if (
             norm_target.endswith("/implementation_plan.md")
-            or os.path.basename(norm_target).lower() == "implementation_plan.md"
+            or _path_basename(norm_target).lower() == "implementation_plan.md"
         ):
             return {
                 "decision": "deny",
@@ -2029,33 +2119,127 @@ def evaluate_pre_tool_use(payload: Dict[str, Any]) -> Dict[str, Any]:
     }
 
 
-def _read_stdin_nonblocking(timeout_sec: float = 2.0) -> str:
+def _log_fail_open(msg: str) -> None:
+    try:
+        sys.stderr.write(f"[Orchestrator Guard] fail-open: {msg}\n")
+        sys.stderr.flush()
+    except Exception:
+        pass
+
+
+def _is_complete_json_text(candidate: str) -> bool:
+    if not candidate:
+        return False
+    if candidate[-1] not in ("}", "]", '"') and not (
+        candidate in ("true", "false", "null") or candidate[-1].isdigit()
+    ):
+        return False
+    try:
+        json.loads(candidate)
+        return True
+    except (json.JSONDecodeError, ValueError):
+        return False
+
+
+def _read_stdin_nonblocking(
+    timeout_sec: float = 2.0, max_bytes: int = MAX_STDIN_BYTES
+) -> str:
     """
-    Reads a JSON payload from sys.stdin in a daemon thread so a stalled pipe
-    without EOF cannot block past `timeout_sec`. Returns immediately once
-    accumulated non-empty lines form a complete JSON value or EOF is reached.
+    Reads a JSON payload from sys.stdin without blocking indefinitely on stalled
+    pipes or missing trailing newlines, bounded by `timeout_sec` and `max_bytes`.
     """
+    stdin_obj = sys.stdin
+    if stdin_obj is None:
+        return ""
+
+    limit = max(1, int(max_bytes))
+    if isinstance(stdin_obj, io.StringIO):
+        return stdin_obj.read(limit)
+
+    timeout = max(0.05, float(timeout_sec))
+    deadline = time.monotonic() + timeout
+
+    fd: Optional[int] = None
+    if os.name == "posix":
+        try:
+            cand_fd = stdin_obj.fileno()
+            if isinstance(cand_fd, int) and cand_fd >= 0:
+                fd = cand_fd
+        except (AttributeError, ValueError, OSError, io.UnsupportedOperation):
+            fd = None
+
+    if fd is not None:
+        raw_chunks: List[bytes] = []
+        total_bytes = 0
+        timed_out = False
+        try:
+            while total_bytes < limit:
+                remaining = deadline - time.monotonic()
+                if remaining <= 0:
+                    timed_out = True
+                    break
+                try:
+                    readable, _, _ = select.select([fd], [], [], remaining)
+                except InterruptedError:
+                    continue
+                if not readable:
+                    timed_out = True
+                    break
+                to_read = min(65536, limit - total_bytes)
+                try:
+                    chunk = os.read(fd, to_read)
+                except (InterruptedError, BlockingIOError):
+                    continue
+                if not chunk:
+                    break
+                raw_chunks.append(chunk)
+                total_bytes += len(chunk)
+
+                try:
+                    more_ready, _, _ = select.select([fd], [], [], 0.0)
+                except (InterruptedError, ValueError, OSError):
+                    more_ready = []
+                if not more_ready:
+                    decoded = b"".join(raw_chunks).decode("utf-8", errors="replace")
+                    if _is_complete_json_text(decoded.strip()):
+                        return decoded
+        except (OSError, ValueError) as exc:
+            _log_fail_open(f"stdin read error ({type(exc).__name__})")
+            return ""
+
+        decoded = b"".join(raw_chunks).decode("utf-8", errors="replace")
+        if timed_out:
+            if _is_complete_json_text(decoded.strip()):
+                return decoded
+            _log_fail_open(f"stdin read timed out after {timeout_sec:.2f}s")
+            return ""
+        return decoded
+
+    # Fallback daemon-thread reader for non-fd streams / non-POSIX platforms
     chunks: List[str] = []
     done = threading.Event()
     read_error: List[BaseException] = []
 
     def _reader() -> None:
         try:
-            stdin_obj = sys.stdin
-            if stdin_obj is None:
-                return
-            while True:
-                line = stdin_obj.readline()
+            chars_read = 0
+            while chars_read < limit:
+                if time.monotonic() >= deadline:
+                    break
+                max_chunk = min(65536, limit - chars_read)
+                try:
+                    line = stdin_obj.readline(max_chunk)
+                except TypeError:
+                    line = stdin_obj.readline()
                 if line == "":
                     break
                 chunks.append(line)
+                chars_read += len(line)
+                if chars_read >= limit:
+                    break
                 candidate = "".join(chunks).strip()
-                if candidate:
-                    try:
-                        json.loads(candidate)
-                        break
-                    except (json.JSONDecodeError, ValueError):
-                        continue
+                if _is_complete_json_text(candidate):
+                    break
         except BaseException as exc:
             read_error.append(exc)
         finally:
@@ -2064,32 +2248,28 @@ def _read_stdin_nonblocking(timeout_sec: float = 2.0) -> str:
     thread = threading.Thread(target=_reader, name="stdin-reader", daemon=True)
     thread.start()
 
-    if not done.wait(timeout=max(0.05, float(timeout_sec))):
-        try:
-            sys.stderr.write(
-                f"[Orchestrator Guard] fail-open: stdin read timed out after {timeout_sec:.2f}s\n"
-            )
-            sys.stderr.flush()
-        except Exception:
-            pass
+    remaining_wait = max(0.05, deadline - time.monotonic())
+    if not done.wait(timeout=remaining_wait):
+        _log_fail_open(f"stdin read timed out after {timeout_sec:.2f}s")
         return ""
 
     if read_error:
-        try:
-            sys.stderr.write(
-                f"[Orchestrator Guard] fail-open: stdin read error ({type(read_error[0]).__name__})\n"
-            )
-            sys.stderr.flush()
-        except Exception:
-            pass
+        _log_fail_open(f"stdin read error ({type(read_error[0]).__name__})")
         return ""
 
-    return "".join(chunks)
+    return "".join(chunks)[:limit]
+
+
+def _emit_json(obj: Dict[str, Any]) -> None:
+    try:
+        sys.stdout.write(json.dumps(obj, ensure_ascii=True))
+        sys.stdout.flush()
+    except (BrokenPipeError, OSError):
+        pass
 
 
 def _emit_allow() -> None:
-    sys.stdout.write(json.dumps({"decision": "allow"}, ensure_ascii=True))
-    sys.stdout.flush()
+    _emit_json({"decision": "allow"})
 
 
 def main() -> None:
@@ -2101,40 +2281,28 @@ def main() -> None:
 
         raw_stdin = _read_stdin_nonblocking()
         if not raw_stdin or not raw_stdin.strip():
-            sys.stderr.write("[Orchestrator Guard] fail-open: empty stdin payload\n")
-            sys.stderr.flush()
+            _log_fail_open("empty stdin payload")
             _emit_allow()
             return
 
         try:
             payload = json.loads(raw_stdin)
         except Exception as exc:
-            sys.stderr.write(
-                f"[Orchestrator Guard] fail-open: malformed JSON payload ({type(exc).__name__})\n"
-            )
-            sys.stderr.flush()
+            _log_fail_open(f"malformed JSON payload ({type(exc).__name__})")
             _emit_allow()
             return
 
         if not isinstance(payload, dict):
-            sys.stderr.write(
-                f"[Orchestrator Guard] fail-open: expected JSON object payload, got {type(payload).__name__}\n"
+            _log_fail_open(
+                f"expected JSON object payload, got {type(payload).__name__}"
             )
-            sys.stderr.flush()
             _emit_allow()
             return
 
         result = evaluate_pre_tool_use(payload)
-        sys.stdout.write(json.dumps(result, ensure_ascii=True))
-        sys.stdout.flush()
+        _emit_json(result)
     except Exception as exc:
-        try:
-            sys.stderr.write(
-                f"[Orchestrator Guard] fail-open: guard evaluation error ({type(exc).__name__}: {exc})\n"
-            )
-            sys.stderr.flush()
-        except Exception:
-            pass
+        _log_fail_open(f"guard evaluation error ({type(exc).__name__}: {exc})")
         _emit_allow()
 
 

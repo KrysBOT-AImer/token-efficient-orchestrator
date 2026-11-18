@@ -117,7 +117,13 @@ Optional environment configuration:
 Run the unit and regression test suite without writing `.pyc` bytecode caches:
 
 ```bash
-python -B -m pytest tests -v
+python3 -B -m unittest discover -s tests -v
+```
+
+Or with `pytest`:
+
+```bash
+python3 -B -m pytest tests -v
 ```
 
 ---

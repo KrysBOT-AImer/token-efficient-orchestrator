@@ -51,6 +51,7 @@ from hooks.orchestrator_guard import (
     _is_incoming_message_envelope,
     _is_valid_parent_artifact_access,
     _read_stdin_nonblocking,
+    _read_text_with_retry,
 )
 
 HOOK_PATH = REPO_ROOT / "hooks" / "orchestrator_guard.py"
@@ -963,6 +964,8 @@ class TestV5OrchestratorFeatures(unittest.TestCase):
             ("read_board", {}),
             ("swarm_wait", {"timeout": 30}),
             ("run_workflow", {"workflow": "recon.py"}),
+            ("enter_plan_mode", {}),
+            ("exit_plan_mode", {}),
         ]
         for tool_name, args in v5_tools:
             with self.subTest(tool=tool_name):
@@ -2632,6 +2635,187 @@ class TestGuardBugFixes(unittest.TestCase):
             },
         })
         self.assertEqual(res_ok.get("decision"), "allow")
+
+
+class TestLinuxCompatibilityAndHangAudits(unittest.TestCase):
+    """Tests Linux compatibility (CWD isolation, POSIX RO commands, cross-platform paths) and hang/blocking guards."""
+
+    def setUp(self):
+        _PARENT_ID_CACHE.clear()
+        TRANSCRIPT_CACHE.clear()
+        self.temp_dir = tempfile.TemporaryDirectory()
+        self.addCleanup(self.temp_dir.cleanup)
+
+    def tearDown(self):
+        _PARENT_ID_CACHE.clear()
+        TRANSCRIPT_CACHE.clear()
+
+    def test_linux_hook_cwd_isolation_and_cross_platform_paths(self):
+        """Ensures hook CWD inside .gemini/config/plugins/orchestrator never leaks allow-list access to relative or Windows paths."""
+        fake_plugin_cwd = Path(self.temp_dir.name) / ".gemini" / "config" / "plugins" / "orchestrator"
+        fake_plugin_cwd.mkdir(parents=True)
+        artifact_dir = Path(self.temp_dir.name) / "brain" / "11111111-1111-1111-1111-111111111111"
+        artifact_dir.mkdir(parents=True)
+
+        orig_cwd = os.getcwd()
+        os.chdir(fake_plugin_cwd)
+        self.addCleanup(os.chdir, orig_cwd)
+
+        for denied_path in (
+            "src/app.py",
+            "README.md",
+            "c:/workspace/src/app.py",
+            "C:\\workspace\\src\\app.py",
+        ):
+            with self.subTest(denied_path=denied_path):
+                res = evaluate_pre_tool_use({
+                    "_test_is_subagent": False,
+                    "artifactDirectoryPath": str(artifact_dir),
+                    "toolCall": {"name": "read_file", "args": {"Path": denied_path}},
+                })
+                self.assertEqual(res.get("decision"), "deny", f"Expected deny for {denied_path}: {res}")
+
+        home = os.path.expanduser("~")
+        for allowed_path in (
+            os.path.join(home, ".gemini", "config", "plugins", "orchestrator", "plugin.json"),
+            os.path.join(home, ".gemini", "antigravity", "builtin", "skills", "plugin", "SKILL.md"),
+            os.path.join(str(artifact_dir), "scratch", "notes.md"),
+            "~/.gemini/config/plugins/orchestrator/plugin.json",
+        ):
+            with self.subTest(allowed_path=allowed_path):
+                res = evaluate_pre_tool_use({
+                    "_test_is_subagent": False,
+                    "artifactDirectoryPath": str(artifact_dir),
+                    "toolCall": {"name": "read_file", "args": {"Path": allowed_path}},
+                })
+                self.assertEqual(res.get("decision"), "allow", f"Expected allow for {allowed_path}: {res}")
+
+        # Verify backslash artifactDirectoryPath extracts curr_conv_id and brain_dir cleanly on Linux
+        parent_id = "11111111-2222-3333-4444-555555555555"
+        child_id = "66666666-7777-8888-9999-000000000000"
+        stale_id = "99999999-0000-1111-2222-333333333333"
+        win_child_art = f"C:\\Users\\user\\.gemini\\antigravity\\brain\\{child_id}"
+
+        for target_path, expected_decision in (
+            (f"C:\\Users\\user\\.gemini\\antigravity\\brain\\{child_id}\\scratch\\own.py", "allow"),
+            (f"C:\\Users\\user\\.gemini\\antigravity\\brain\\{parent_id}\\scratch\\shared.py", "allow"),
+            (f"C:\\Users\\user\\.gemini\\antigravity\\brain\\{stale_id}\\scratch\\stale.py", "deny"),
+        ):
+            with self.subTest(backslash_target=target_path):
+                res = evaluate_pre_tool_use({
+                    "_test_is_subagent": True,
+                    "_test_parent_conv_id": parent_id,
+                    "artifactDirectoryPath": win_child_art,
+                    "toolCall": {"name": "read_file", "args": {"Path": target_path}},
+                })
+                self.assertEqual(res.get("decision"), expected_decision, f"Unexpected decision for {target_path}: {res}")
+
+    def test_linux_posix_read_only_command_blocking(self):
+        """Verifies RO sessions (@councillor and research) deny mutating Linux commands while allowing RO commands."""
+        ro_contexts = [
+            ("councillor", {"_test_is_subagent": True, "_test_is_swarm_worker": True, "_test_swarm_role": "councillor", "_test_is_read_only_subagent": True}),
+            ("research", {"_test_is_subagent": True, "_test_is_read_only_subagent": True}),
+        ]
+        denied_cmds = [
+            "mv a b",
+            "cp a b",
+            "touch foo",
+            "chmod +x a.sh",
+            "sed -i 's/a/b/' file.py",
+            "pip3 install foo",
+            "git cherry-pick abc",
+        ]
+        allowed_cmds = [
+            "ls -la",
+            "git status",
+            "git diff",
+            "grep -rn foo src/",
+        ]
+
+        for role_label, base_payload in ro_contexts:
+            for cmd in denied_cmds:
+                with self.subTest(role=role_label, denied_cmd=cmd):
+                    res = evaluate_pre_tool_use({
+                        **base_payload,
+                        "toolCall": {"name": "run_command", "args": {"CommandLine": cmd}},
+                    })
+                    self.assertEqual(res.get("decision"), "deny", f"{role_label} should deny '{cmd}': {res}")
+                    self.assertIn("read-only", res.get("reason", "").lower())
+
+            for cmd in allowed_cmds:
+                with self.subTest(role=role_label, allowed_cmd=cmd):
+                    res = evaluate_pre_tool_use({
+                        **base_payload,
+                        "toolCall": {"name": "run_command", "args": {"CommandLine": cmd}},
+                    })
+                    self.assertEqual(res.get("decision"), "allow", f"{role_label} should allow '{cmd}': {res}")
+
+    @unittest.skipUnless(hasattr(os, "mkfifo"), "Requires POSIX os.mkfifo")
+    def test_fifo_named_pipe_nonblocking_read_guarantee(self):
+        """Ensures FIFOs / named pipes with no writer never block _read_text_with_retry or TRANSCRIPT_CACHE."""
+        fifo_path = os.path.join(self.temp_dir.name, "blocking_transcript.jsonl")
+        os.mkfifo(fifo_path)
+
+        t0 = time.monotonic()
+        raw = _read_text_with_retry(fifo_path)
+        recs = TRANSCRIPT_CACHE.get_records(fifo_path)
+        elapsed = time.monotonic() - t0
+
+        self.assertLess(elapsed, 0.2)
+        self.assertEqual(raw, "")
+        self.assertEqual(recs, [])
+
+    def test_stdin_nonblocking_without_trailing_newline_and_max_bytes_cap(self):
+        """Verifies _read_stdin_nonblocking parses JSON without trailing newline on delayed-EOF pipe and enforces max_bytes."""
+        # 1. Complete JSON without trailing newline on open pipe
+        r_fd, w_fd = os.pipe()
+        read_stream = os.fdopen(r_fd, "r", encoding="utf-8", closefd=True)
+        write_stream = os.fdopen(w_fd, "w", encoding="utf-8", closefd=True)
+        try:
+            def _writer_no_nl():
+                time.sleep(0.03)
+                write_stream.write('{"_test_is_subagent": false, "toolCall": {"name": "swarm_wait", "args": {}}}')
+                write_stream.flush()
+
+            threading.Thread(target=_writer_no_nl, daemon=True).start()
+            t0 = time.monotonic()
+            with patch.object(sys, "stdin", read_stream):
+                raw = _read_stdin_nonblocking(timeout_sec=1.5)
+            elapsed = time.monotonic() - t0
+            self.assertLess(elapsed, 0.5)
+            self.assertEqual(json.loads(raw)["toolCall"]["name"], "swarm_wait")
+        finally:
+            for stream in (write_stream, read_stream):
+                try:
+                    stream.close()
+                except Exception:
+                    pass
+
+        # 2. Oversized stream stops promptly at max_bytes without hanging
+        r_fd2, w_fd2 = os.pipe()
+        read_stream2 = os.fdopen(r_fd2, "r", encoding="utf-8", closefd=True)
+        write_stream2 = os.fdopen(w_fd2, "w", encoding="utf-8", closefd=True)
+        try:
+            def _writer_oversized():
+                try:
+                    write_stream2.write('{"payload": "' + ("A" * 8192))
+                    write_stream2.flush()
+                except Exception:
+                    pass
+
+            threading.Thread(target=_writer_oversized, daemon=True).start()
+            t0 = time.monotonic()
+            with patch.object(sys, "stdin", read_stream2):
+                capped = _read_stdin_nonblocking(timeout_sec=1.5, max_bytes=1024)
+            elapsed = time.monotonic() - t0
+            self.assertLess(elapsed, 0.5)
+            self.assertEqual(len(capped), 1024)
+        finally:
+            for stream in (write_stream2, read_stream2):
+                try:
+                    stream.close()
+                except Exception:
+                    pass
 
 
 if __name__ == "__main__":

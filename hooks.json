@@ -7,7 +7,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "python hooks/orchestrator_guard.py",
+            "command": "python -B hooks/orchestrator_guard.py",
             "timeout": 10
           }
         ]
