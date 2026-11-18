@@ -1,4 +1,4 @@
-# Token-Efficient Task Orchestrator (v1.0 — Three-Family Model Matrix)
+# Token-Efficient Task Orchestrator (v1.1 — Three-Family Model Matrix)
 
 > [!CAUTION]
 > **Experimental Software — Use Strictly at Your Own Risk**
@@ -7,7 +7,46 @@
 >
 > **Recommended Installation Approach:** Instead of a direct, blind drop-in installation, **inspect the source code and rules first** (`hooks/orchestrator_guard.py`, `rules/AGENTS.md`, `skills/token-efficient-orchestrator/SKILL.md`), or **have your own AI coding agent review, adapt, and install it** to fit your specific environment, tools, and workflow needs.
 
-A high-precision, token-efficient cognitive orchestration system for **Google Antigravity**. Built around the **Three-Family Model Matrix** (`Hydrogen` + `Argon` + `Carbon` + `Orchestrator (Argon)/(Carbon)`): **Hydrogen** (4 thinking levels: Low, Medium, High, XHigh) handling 80%+ of Recon and Execution, **Argon** (3 thinking levels: Low, Medium, High) powering the Dedicated Swarm Planner (`@planner`) and Tier-1 Councillor (`@councillor`), and **Carbon** (3 thinking levels: Low, Medium, High) reserved strictly for Tier-2 `@councillor` deadlock escalation and critical security & compliance audits (`@auditor`).
+A high-precision, token-efficient cognitive orchestration system for **Google Antigravity** (cognitive architecture **v6.0**). Built around the **Three-Family Model Matrix** (`Hydrogen` + `Argon` + `Carbon` + `Orchestrator (Argon)/(Carbon)`): **Hydrogen** (4 thinking levels: Low, Medium, High, XHigh) handling 80%+ of Recon and Execution, **Argon** (3 thinking levels: Low, Medium, High) powering the Dedicated Swarm Planner (`@planner`) and Tier-1 Councillor (`@councillor`), and **Carbon** (3 thinking levels: Low, Medium, High) reserved strictly for Tier-2 `@councillor` deadlock escalation and critical security & compliance audits (`@auditor`).
+
+---
+
+## 🖥️ Platform Editions: Windows vs. Linux (Quick Pick)
+
+The `main` branch hosts synchronized, side-by-side platform bundles so every file is directly browseable on GitHub without switching branches:
+
+1. [`windows/`](./windows/) — **Dedicated Windows Edition** (`hooks.json`: `python -B hooks/orchestrator_guard.py`, tailored for `%USERPROFILE%\.gemini\config\plugins\orchestrator\`).
+2. [`linux/`](./linux/) — **Dedicated Linux Edition** (`hooks.json`: `python3 -B hooks/orchestrator_guard.py`, executable `100755` scripts, POSIX + PowerShell command guards, tailored for `~/.gemini/config/plugins/orchestrator/`).
+3. `/` (Repository Root) — **Universal / Windows-Compatible Default** (mirrors `windows/` at root so cloning root directly into `plugins/orchestrator` works out-of-the-box).
+
+| Edition Folder | Target OS | Hook Command | Install Destination | Key OS-Specific & Shared v1.1 Highlights |
+| :--- | :--- | :--- | :--- | :--- |
+| [`windows/`](./windows/) | **Windows** | `python -B hooks/orchestrator_guard.py` | `%USERPROFILE%\.gemini\config\plugins\orchestrator\` | Native `python.exe` launcher; Windows drive/UNC/MSYS path normalization + shared v1.1 guard hardening ([windows/README.md](windows/README.md)). |
+| [`linux/`](./linux/) | **Linux / POSIX** | `python3 -B hooks/orchestrator_guard.py` | `~/.gemini/config/plugins/orchestrator/` | Executable `100755` `.py` files; POSIX + PowerShell RO command guards; non-blocking FIFO/`stdin` + shared v1.1 hardening ([linux/README.md](linux/README.md)). |
+| [`/`](./) (Root) | **Windows / Universal** | `python -B hooks/orchestrator_guard.py` | `%USERPROFILE%\.gemini\config\plugins\orchestrator\` | Mirrors `windows/` at repo root for direct `git clone` into `plugins/orchestrator` on systems with `python` in `PATH`. |
+
+### Quick Install Commands
+
+**Windows (PowerShell):**
+```powershell
+New-Item -ItemType Directory -Force "$env:USERPROFILE\.gemini\config\plugins\orchestrator" | Out-Null
+Copy-Item -Recurse -Force ".\windows\*" "$env:USERPROFILE\.gemini\config\plugins\orchestrator\"
+```
+
+**Linux (Bash):**
+```bash
+mkdir -p ~/.gemini/config/plugins/orchestrator
+cp -a ./linux/. ~/.gemini/config/plugins/orchestrator/
+chmod +x ~/.gemini/config/plugins/orchestrator/hooks/orchestrator_guard.py
+```
+
+### What's New in v1.1.0 (Windows & Linux)
+* **Side-by-Side Platform Bundles on `main`**: Dedicated [`windows/`](./windows/) (`python -B`) and [`linux/`](./linux/) (`python3 -B`, `100755` executable scripts) editions alongside the Windows-compatible root bundle.
+* **Linux POSIX Hardening**: POSIX Read-Only command blocking alongside PowerShell guards, plus cross-platform path normalization across Windows drives, UNC, MSYS, and POSIX paths.
+* **Non-Blocking FIFO & `stdin` I/O**: Named-pipe/FIFO checks prevent `_read_text_with_retry` from hanging on unbuffered pipes, and `_read_stdin_nonblocking` safely handles delayed-EOF payloads with a byte cap.
+* **`MessagesCache` (~7x I/O Reduction)**: Thread-safe bounded directory/file-stamp cache for `.system_generated/messages/*.json` eliminates redundant disk reads on every tool hook invocation.
+* **CWD Allow-List Isolation**: Hook working directories inside `.gemini/config/plugins/orchestrator` no longer leak allow-list access to relative or cross-platform paths.
+* **Plan Mode & Guard Accuracy**: Added `enter_plan_mode` / `exit_plan_mode` Main Session allow-list support, ReDoS bounds on regex matching, and lazy parent-ID resolution for subagent wrap-up detection.
 
 ---
 
@@ -39,7 +78,7 @@ A high-precision, token-efficient cognitive orchestration system for **Google An
 
 ---
 
-## 📊 The Three-Family Fleet Matrix (`v1.0`)
+## 📊 The Three-Family Fleet Matrix (`v6.0` Architecture / `v1.1.0` Plugin)
 
 | Family | Thinking / Variant | Exact Model ID / Subagent Alias | Primary Cognitive Role | Typical Workloads & Target |
 | :--- | :--- | :--- | :--- | :--- |
@@ -53,9 +92,9 @@ A high-precision, token-efficient cognitive orchestration system for **Google An
 
 ---
 
-## 📂 Folder Structure & Platform Editions
+## 📂 Repository Structure
 
-The repository ships a **Windows-ready root** alongside complete, self-contained **`windows/`** and **`linux/`** drop-in editions:
+The repository ships a **Windows-ready root** alongside complete, self-contained **`windows/`** and **`linux/`** drop-in editions (see [Platform Editions: Windows vs. Linux](#-platform-editions-windows-vs-linux-quick-pick) above):
 
 ```text
 orchestrator/                           # Root edition (Windows-ready default: `python -B`)
@@ -63,17 +102,17 @@ orchestrator/                           # Root edition (Windows-ready default: `
 ├── LICENSE                             # MIT License
 ├── hooks.json                          # PreToolUse guard hook registration (`python -B`)
 ├── hooks/
-│   └── orchestrator_guard.py           # Pure-dispatcher, swarm, & subagent boundary guard (v1.0)
-├── plugin.json                         # Plugin manifest (v1.0.0)
+│   └── orchestrator_guard.py           # Pure-dispatcher, swarm, & subagent boundary guard (v1.1.0)
+├── plugin.json                         # Plugin manifest (v1.1.0)
 ├── README.md                           # Architecture and reference guide
 ├── rules/
-│   └── AGENTS.md                       # Mandatory global orchestrator rule (v1.0)
+│   └── AGENTS.md                       # Mandatory global orchestrator rule (v6.0)
 ├── skills/
 │   └── token-efficient-orchestrator/
 │       └── SKILL.md                    # Full Three-Family routing matrix & operational templates
 ├── tests/
 │   ├── __init__.py
-│   └── test_orchestrator_guard.py      # Automated unit & regression test suite
+│   └── test_orchestrator_guard.py      # Automated unit & regression test suite (46 tests)
 ├── windows/                            # Drop-in Windows edition (`python -B`, see windows/README.md)
 │   ├── hooks.json
 │   ├── plugin.json
@@ -92,15 +131,9 @@ orchestrator/                           # Root edition (Windows-ready default: `
     └── tests/{__init__.py,test_orchestrator_guard.py}
 ```
 
-| Edition | Hook Command | Target Directory | Notes |
-| :--- | :--- | :--- | :--- |
-| **Root (`/`)** | `python -B hooks/orchestrator_guard.py` | Windows or systems with `python` in `PATH` | Windows-ready default at repository root. |
-| **Windows (`windows/`)** | `python -B hooks/orchestrator_guard.py` | `%USERPROFILE%\.gemini\config\plugins\orchestrator\` | Self-contained drop-in Windows package ([windows/README.md](windows/README.md)). |
-| **Linux (`linux/`)** | `python3 -B hooks/orchestrator_guard.py` | `~/.gemini/config/plugins/orchestrator/` | Self-contained drop-in Linux package with executable `.py` files ([linux/README.md](linux/README.md)). |
-
 ---
 
-## 🛡️ PreToolUse Guard Rules Summary (`orchestrator_guard.py` v1.0)
+## 🛡️ PreToolUse Guard Rules Summary (`orchestrator_guard.py` v1.1.0)
 
 | Session Type | Tool / Condition | Decision | Behavior / Reason |
 | :--- | :--- | :--- | :--- |
@@ -121,29 +154,12 @@ orchestrator/                           # Root edition (Windows-ready default: `
 
 ---
 
-## 📦 Installation
+## 📦 Post-Install Configuration & Customization
 
 > [!IMPORTANT]
 > **Do not blindly drop this plugin into a production setup.** Review `hooks/orchestrator_guard.py`, `rules/AGENTS.md`, and `skills/token-efficient-orchestrator/SKILL.md` first, or ask your own AI coding agent to inspect the repository, tailor the guard rules and model IDs to your environment, and handle the installation for you.
 
-### Windows (`%USERPROFILE%\.gemini\config\plugins\orchestrator\`)
-Copy the root edition or `windows/` edition (`python -B hooks/orchestrator_guard.py`):
-
-```powershell
-New-Item -ItemType Directory -Force "$env:USERPROFILE\.gemini\config\plugins\orchestrator" | Out-Null
-Copy-Item -Recurse -Force ".\windows\*" "$env:USERPROFILE\.gemini\config\plugins\orchestrator\"
-```
-
-### Linux (`~/.gemini/config/plugins/orchestrator/`)
-Copy the `linux/` edition (`python3 -B hooks/orchestrator_guard.py` with executable `.py` files):
-
-```bash
-mkdir -p ~/.gemini/config/plugins/orchestrator
-cp -a ./linux/. ~/.gemini/config/plugins/orchestrator/
-chmod +x ~/.gemini/config/plugins/orchestrator/hooks/orchestrator_guard.py
-```
-
-Then:
+After copying the [`windows/`](./windows/) or [`linux/`](./linux/) edition using the [Quick Install Commands](#quick-install-commands) above:
 1. Review and customize any workspace-specific rules, model IDs, and circuit-breaker thresholds to match your workflow.
 2. Enable the `orchestrator` plugin in Antigravity's **Plugins Manager**.
 
