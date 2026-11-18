@@ -7,7 +7,7 @@
 >
 > **Recommended Installation Approach:** Instead of a direct, blind drop-in installation, **inspect the source code and rules first** (`hooks/orchestrator_guard.py`, `rules/AGENTS.md`, `skills/token-efficient-orchestrator/SKILL.md`), or **have your own AI coding agent review, adapt, and install it** to fit your specific environment, tools, and workflow needs.
 
-A high-precision, token-efficient cognitive orchestration system for **Google Antigravity** (cognitive architecture **v6.0**). Built around the **Three-Family Model Matrix** (`Hydrogen` + `Neon` + `Carbon` + `Orchestrator (Neon)/(Carbon)`): **Hydrogen** (4 thinking levels: Low, Medium, High, XHigh) handling 80%+ of Recon and Execution, **Neon** (4 thinking levels: Low, Medium, High, XHigh) powering the Dedicated Swarm Planner (`@planner`) and Tier-1 Councillor (`@councillor`), and **Carbon** (3 thinking levels: Low, Medium, High) reserved strictly for Tier-2 `@councillor` deadlock escalation and critical security & compliance audits (`@auditor`).
+A high-precision, token-efficient cognitive orchestration system for **Google Antigravity** (cognitive architecture **v1.2**). Built around the **Three-Family Model Matrix** (`Hydrogen` + `Neon` + `Carbon` + `Orchestrator (Neon)/(Carbon)`): **Hydrogen** (4 thinking levels: Low, Medium, High, XHigh) handling 80%+ of Recon and Execution, **Neon** (4 thinking levels: Low, Medium, High, XHigh) powering the Dedicated Swarm Planner (`@planner`) and Tier-1 Councillor (`@councillor`), and **Carbon** (3 thinking levels: Low, Medium, High) reserved strictly for Tier-2 `@councillor` deadlock escalation and critical security & compliance audits (`@auditor`).
 
 ---
 
@@ -19,11 +19,13 @@ The `main` branch hosts synchronized, side-by-side platform bundles so every fil
 2. [`linux/`](./linux/) — **Dedicated Linux Edition** (`hooks.json`: `python3 -B hooks/orchestrator_guard.py`, executable `100755` scripts, POSIX + PowerShell command guards, tailored for `~/.gemini/config/plugins/orchestrator/`).
 3. `/` (Repository Root) — **Universal / Windows-Compatible Default** (mirrors `windows/` at root so cloning root directly into `plugins/orchestrator` works out-of-the-box).
 
-| Edition Folder | Target OS | Hook Command | Install Destination | Key OS-Specific & Shared v1.2 Highlights |
-| :--- | :--- | :--- | :--- | :--- |
-| [`windows/`](./windows/) | **Windows** | `python -B hooks/orchestrator_guard.py` | `%USERPROFILE%\.gemini\config\plugins\orchestrator\` | Native `python.exe` launcher; Windows drive/UNC/MSYS path normalization + shared v1.2 Neon matrix & guard ([windows/README.md](windows/README.md)). |
-| [`linux/`](./linux/) | **Linux / POSIX** | `python3 -B hooks/orchestrator_guard.py` | `~/.gemini/config/plugins/orchestrator/` | Executable `100755` `.py` files; POSIX + PowerShell RO command guards; non-blocking FIFO/`stdin` + shared v1.2 Neon matrix & guard ([linux/README.md](linux/README.md)). |
-| [`/`](./) (Root) | **Windows / Universal** | `python -B hooks/orchestrator_guard.py` | `%USERPROFILE%\.gemini\config\plugins\orchestrator\` | Mirrors `windows/` at repo root for direct `git clone` into `plugins/orchestrator` on systems with `python` in `PATH`. |
+| Edition | Hook Launcher | Key Highlights | Guide |
+| :--- | :--- | :--- | :--- |
+| **[`windows/`](./windows/)** (Windows) | `python -B` | Native `python.exe`; drive/UNC/MSYS path normalization + v1.2 Neon matrix | [Windows Guide](windows/README.md) |
+| **[`linux/`](./linux/)** (Linux / POSIX) | `python3 -B` | Executable `100755` `.py` files; POSIX + PowerShell RO guards; non-blocking FIFO/`stdin` | [Linux Guide](linux/README.md) |
+| **[`/`](./)** (Root / Universal) | `python -B` | Mirrors `windows/` for direct `git clone` into `plugins/orchestrator` | [Quick Start](#quick-install-commands) |
+
+> **Hook script:** `hooks/orchestrator_guard.py` · **Install destination:** `%USERPROFILE%\.gemini\config\plugins\orchestrator\` (Windows) or `~/.gemini/config/plugins/orchestrator/` (Linux).
 
 ### Quick Install Commands
 
@@ -82,7 +84,7 @@ chmod +x ~/.gemini/config/plugins/orchestrator/hooks/orchestrator_guard.py
 
 ---
 
-## 📊 The Three-Family Fleet Matrix (`v6.0` Architecture / `v1.2.0` Plugin)
+## 📊 The Three-Family Fleet Matrix (`v1.2`)
 
 | Family | Thinking / Variant | Exact Model ID / Subagent Alias | Primary Cognitive Role | Typical Workloads & Target |
 | :--- | :--- | :--- | :--- | :--- |
@@ -110,7 +112,7 @@ orchestrator/                           # Root edition (Windows-ready default: `
 ├── plugin.json                         # Plugin manifest (v1.2.0)
 ├── README.md                           # Architecture and reference guide
 ├── rules/
-│   └── AGENTS.md                       # Mandatory global orchestrator rule (v6.0)
+│   └── AGENTS.md                       # Mandatory global orchestrator rule (v1.2)
 ├── skills/
 │   └── token-efficient-orchestrator/
 │       └── SKILL.md                    # Full Three-Family routing matrix & operational templates
