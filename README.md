@@ -1,4 +1,4 @@
-# Token-Efficient Task Orchestrator (v1.1 — Three-Family Model Matrix)
+# Token-Efficient Task Orchestrator (v1.2 — Three-Family Model Matrix)
 
 > [!CAUTION]
 > **Experimental Software — Use Strictly at Your Own Risk**
@@ -7,7 +7,7 @@
 >
 > **Recommended Installation Approach:** Instead of a direct, blind drop-in installation, **inspect the source code and rules first** (`hooks/orchestrator_guard.py`, `rules/AGENTS.md`, `skills/token-efficient-orchestrator/SKILL.md`), or **have your own AI coding agent review, adapt, and install it** to fit your specific environment, tools, and workflow needs.
 
-A high-precision, token-efficient cognitive orchestration system for **Google Antigravity** (cognitive architecture **v6.0**). Built around the **Three-Family Model Matrix** (`Hydrogen` + `Argon` + `Carbon` + `Orchestrator (Argon)/(Carbon)`): **Hydrogen** (4 thinking levels: Low, Medium, High, XHigh) handling 80%+ of Recon and Execution, **Argon** (3 thinking levels: Low, Medium, High) powering the Dedicated Swarm Planner (`@planner`) and Tier-1 Councillor (`@councillor`), and **Carbon** (3 thinking levels: Low, Medium, High) reserved strictly for Tier-2 `@councillor` deadlock escalation and critical security & compliance audits (`@auditor`).
+A high-precision, token-efficient cognitive orchestration system for **Google Antigravity** (cognitive architecture **v6.0**). Built around the **Three-Family Model Matrix** (`Hydrogen` + `Neon` + `Carbon` + `Orchestrator (Neon)/(Carbon)`): **Hydrogen** (4 thinking levels: Low, Medium, High, XHigh) handling 80%+ of Recon and Execution, **Neon** (4 thinking levels: Low, Medium, High, XHigh) powering the Dedicated Swarm Planner (`@planner`) and Tier-1 Councillor (`@councillor`), and **Carbon** (3 thinking levels: Low, Medium, High) reserved strictly for Tier-2 `@councillor` deadlock escalation and critical security & compliance audits (`@auditor`).
 
 ---
 
@@ -19,10 +19,10 @@ The `main` branch hosts synchronized, side-by-side platform bundles so every fil
 2. [`linux/`](./linux/) — **Dedicated Linux Edition** (`hooks.json`: `python3 -B hooks/orchestrator_guard.py`, executable `100755` scripts, POSIX + PowerShell command guards, tailored for `~/.gemini/config/plugins/orchestrator/`).
 3. `/` (Repository Root) — **Universal / Windows-Compatible Default** (mirrors `windows/` at root so cloning root directly into `plugins/orchestrator` works out-of-the-box).
 
-| Edition Folder | Target OS | Hook Command | Install Destination | Key OS-Specific & Shared v1.1 Highlights |
+| Edition Folder | Target OS | Hook Command | Install Destination | Key OS-Specific & Shared v1.2 Highlights |
 | :--- | :--- | :--- | :--- | :--- |
-| [`windows/`](./windows/) | **Windows** | `python -B hooks/orchestrator_guard.py` | `%USERPROFILE%\.gemini\config\plugins\orchestrator\` | Native `python.exe` launcher; Windows drive/UNC/MSYS path normalization + shared v1.1 guard hardening ([windows/README.md](windows/README.md)). |
-| [`linux/`](./linux/) | **Linux / POSIX** | `python3 -B hooks/orchestrator_guard.py` | `~/.gemini/config/plugins/orchestrator/` | Executable `100755` `.py` files; POSIX + PowerShell RO command guards; non-blocking FIFO/`stdin` + shared v1.1 hardening ([linux/README.md](linux/README.md)). |
+| [`windows/`](./windows/) | **Windows** | `python -B hooks/orchestrator_guard.py` | `%USERPROFILE%\.gemini\config\plugins\orchestrator\` | Native `python.exe` launcher; Windows drive/UNC/MSYS path normalization + shared v1.2 Neon matrix & guard ([windows/README.md](windows/README.md)). |
+| [`linux/`](./linux/) | **Linux / POSIX** | `python3 -B hooks/orchestrator_guard.py` | `~/.gemini/config/plugins/orchestrator/` | Executable `100755` `.py` files; POSIX + PowerShell RO command guards; non-blocking FIFO/`stdin` + shared v1.2 Neon matrix & guard ([linux/README.md](linux/README.md)). |
 | [`/`](./) (Root) | **Windows / Universal** | `python -B hooks/orchestrator_guard.py` | `%USERPROFILE%\.gemini\config\plugins\orchestrator\` | Mirrors `windows/` at repo root for direct `git clone` into `plugins/orchestrator` on systems with `python` in `PATH`. |
 
 ### Quick Install Commands
@@ -40,6 +40,10 @@ cp -a ./linux/. ~/.gemini/config/plugins/orchestrator/
 chmod +x ~/.gemini/config/plugins/orchestrator/hooks/orchestrator_guard.py
 ```
 
+### What's New in v1.2.0 (Windows & Linux)
+* **Gemini Neon Migration (4 Thinking Levels)**: Upgraded the Three-Family Model Matrix to **Gemini Neon** (`gemini-4-neon-low`, `gemini-4-neon-medium`, `gemini-4-neon-high`, `gemini-4-neon-xhigh`) for `@planner` and Tier-1 `@councillor`, and updated the fast dispatcher to **`Orchestrator (Neon)`** (`gemini-pro-orchestrator-neon`).
+* **Synchronized Three-Tree Update**: Updated `hooks/orchestrator_guard.py` (Tier-1 `"neon"` escalation state and messages), `rules/AGENTS.md`, `skills/token-efficient-orchestrator/SKILL.md`, `plugin.json` (`1.2.0`), and `tests/test_orchestrator_guard.py` (`TestNeonAndCarbonEscalation`) identically across root `/`, `linux/`, and `windows/`.
+
 ### What's New in v1.1.0 (Windows & Linux)
 * **Side-by-Side Platform Bundles on `main`**: Dedicated [`windows/`](./windows/) (`python -B`) and [`linux/`](./linux/) (`python3 -B`, `100755` executable scripts) editions alongside the Windows-compatible root bundle.
 * **Linux POSIX Hardening**: POSIX Read-Only command blocking alongside PowerShell guards, plus cross-platform path normalization across Windows drives, UNC, MSYS, and POSIX paths.
@@ -53,17 +57,17 @@ chmod +x ~/.gemini/config/plugins/orchestrator/hooks/orchestrator_guard.py
 ## 🚀 Key Architectural Pillars
 
 ### 1. Main Session Commander (Pure Dispatcher)
-* **Supported Models**: `Hydrogen High` (`gemini-4-hydrogen-high`), `Orchestrator (Argon)` (`gemini-pro-orchestrator-argon`) for faster/lower-token dispatch, or `Orchestrator (Carbon)` (`gemini-pro-orchestrator`) for ultra-complex multi-system orchestration.
+* **Supported Models**: `Hydrogen High` (`gemini-4-hydrogen-high`), `Orchestrator (Neon)` (`gemini-pro-orchestrator-neon`) for faster/lower-token dispatch, or `Orchestrator (Carbon)` (`gemini-pro-orchestrator`) for ultra-complex multi-system orchestration.
 * **Platform-Level Guard**: Enforced via `orchestrator-pure-dispatcher-guard` (`hooks/orchestrator_guard.py`). The Main Session is physically blocked from executing workspace file edits, shell commands (`run_command`), web searches, MCP tools, **writing outside `<artifactDirectoryPath>/scratch/`**, and **directly writing or editing `implementation_plan.md`**.
 
-### 2. Dedicated Swarm Planner & Two-Tier Councillor (`Argon` → `Carbon`)
-* **Dedicated Swarm Planner (`@planner`)**: Spawned sequentially (`swarm(action="title")` then `swarm(action="add", name="planner", model="gemini-4-argon-medium", fork="coordinator", workspace="inherit", brief="...")` in separate turns).
+### 2. Dedicated Swarm Planner & Two-Tier Councillor (`Neon` → `Carbon`)
+* **Dedicated Swarm Planner (`@planner`)**: Spawned sequentially (`swarm(action="title")` then `swarm(action="add", name="planner", model="gemini-4-neon-medium", fork="coordinator", workspace="inherit", brief="...")` in separate turns).
   * **Warm Coordinator Fork**: Inherits complete Phase 0 recon and Phase 0.5 Grill-Me history via `fork="coordinator"`.
-  * **Artifact-Only Author**: Exclusively authors and updates `<parentArtifactDirectoryPath>/implementation_plan.md` (`gemini-4-argon-low` for minor edits, `gemini-4-argon-medium` default, `gemini-4-argon-high` for complex architecture).
+  * **Artifact-Only Author**: Exclusively authors and updates `<parentArtifactDirectoryPath>/implementation_plan.md` (`gemini-4-neon-low` for minor edits, `gemini-4-neon-medium` default, `gemini-4-neon-high` for complex architecture, `gemini-4-neon-xhigh` available for deepest architectural planning).
   * **Zero Token Cost in Standby**: Sleeps in `waiting` state at zero token cost until nudged via `post_message`.
 * **Two-Tier Councillor (`@councillor`) & Escalation Gate**:
-  * **Tier-1 (`Argon`)**: Spawned via `swarm(action="add", name="councillor", model="gemini-4-argon-medium", fork="coordinator", workspace="inherit", brief="...")`. Strictly **Read-Only** (`orchestrator_guard.py` hard-blocks file writes, mutating MCP tools, and mutating shell commands).
-  * **Tier-2 (`Carbon`)**: Upgraded in-place via `swarm(action="model", name="councillor", model="gemini-4-carbon-medium")` (or `high`) ONLY if Tier-1 Argon cannot resolve the deadlock.
+  * **Tier-1 (`Neon`)**: Spawned via `swarm(action="add", name="councillor", model="gemini-4-neon-medium", fork="coordinator", workspace="inherit", brief="...")`. Strictly **Read-Only** (`orchestrator_guard.py` hard-blocks file writes, mutating MCP tools, and mutating shell commands).
+  * **Tier-2 (`Carbon`)**: Upgraded in-place via `swarm(action="model", name="councillor", model="gemini-4-carbon-medium")` (or `high`) ONLY if Tier-1 Neon cannot resolve the deadlock.
   * **Guard-Enforced Escalation Gate**: `orchestrator_guard.py` blocks `>= 2` consecutive `invoke_subagent` retries after `STATUS: ESCALATE_REQUIRED`, `CIRCUIT BREAKER`, `NO_VALID_SEND`, or retry keywords (`fix`, `retry`, `remaining`, `pass 2`) until `@councillor` posts a strategy or `ask_question` is consulted.
 
 ### 3. 80%+ Hydrogen Execution Fleet & Token-Efficiency Architecture
@@ -78,16 +82,16 @@ chmod +x ~/.gemini/config/plugins/orchestrator/hooks/orchestrator_guard.py
 
 ---
 
-## 📊 The Three-Family Fleet Matrix (`v6.0` Architecture / `v1.1.0` Plugin)
+## 📊 The Three-Family Fleet Matrix (`v6.0` Architecture / `v1.2.0` Plugin)
 
 | Family | Thinking / Variant | Exact Model ID / Subagent Alias | Primary Cognitive Role | Typical Workloads & Target |
 | :--- | :--- | :--- | :--- | :--- |
-| **Orchestrator** | **Argon / Carbon** | `gemini-pro-orchestrator-argon` / `gemini-pro-orchestrator` | **Main Session Pure Dispatcher** | Fast low-token dispatch (`Argon`), or ultra-complex multi-system orchestration (`Carbon`). |
+| **Orchestrator** | **Neon / Carbon** | `gemini-pro-orchestrator-neon` / `gemini-pro-orchestrator` | **Main Session Pure Dispatcher** | Fast low-token dispatch (`Neon`), or ultra-complex multi-system orchestration (`Carbon`). |
 | **Hydrogen** | **Low** | `gemini-4-hydrogen-low` (`invoke_subagent: flash_lite`) | Instant Recon & Mechanical | Pre-plan file discovery, log grepping, CSV/JSON transforms, CLI lookups. |
 | **Hydrogen** | **Medium** | `gemini-4-hydrogen-medium` (`invoke_subagent: flash`, `run_workflow: flash`) | Routine Execution & Scripting | Deep file/case inspection, routine scripts, unit tests, standard Mode C Swarm edits. |
 | **Hydrogen** | **High** | `gemini-4-hydrogen-high` (`Main Session`, `invoke_subagent: inherit`) | Main Commander & Workhorse | Pure Dispatcher (`Main Session`), multi-file refactoring, Swarm Author/Verifier (`workspace="share"`). |
 | **Hydrogen** | **XHigh** | `gemini-4-hydrogen-xhigh` (`swarm`) | Deepest Hydrogen Execution | Concurrency/race debugging, escalated Hydrogen execution retries (`workspace="share"`). |
-| **Argon** | **Low / Medium / High** | `gemini-4-argon-low/medium/high` (`swarm`) | **`@planner` & Tier-1 `@councillor`** | Fast interactive `1M`-context planning (`@planner`) & first-line root-cause diagnosis (`@councillor`, `workspace="inherit"`). |
+| **Neon** | **Low / Medium / High / XHigh** | `gemini-4-neon-low/medium/high/xhigh` (`swarm`) | **`@planner` & Tier-1 `@councillor`** | Fast interactive `1M`-context planning (`@planner`, `xhigh` available for deepest architecture) & first-line root-cause diagnosis (`@councillor`, `workspace="inherit"`). |
 | **Carbon** | **Low / Medium / High** | `gemini-4-carbon-low/medium/high` (`swarm`) | **Tier-2 `@councillor` & Critical Audits** | Surgical `1M`-context deadlock escalation (`swarm(action="model", ...)`), critical security & compliance audits (`@auditor`). |
 
 ---
@@ -102,8 +106,8 @@ orchestrator/                           # Root edition (Windows-ready default: `
 ├── LICENSE                             # MIT License
 ├── hooks.json                          # PreToolUse guard hook registration (`python -B`)
 ├── hooks/
-│   └── orchestrator_guard.py           # Pure-dispatcher, swarm, & subagent boundary guard (v1.1.0)
-├── plugin.json                         # Plugin manifest (v1.1.0)
+│   └── orchestrator_guard.py           # Pure-dispatcher, swarm, & subagent boundary guard (v1.2.0)
+├── plugin.json                         # Plugin manifest (v1.2.0)
 ├── README.md                           # Architecture and reference guide
 ├── rules/
 │   └── AGENTS.md                       # Mandatory global orchestrator rule (v6.0)
@@ -133,14 +137,14 @@ orchestrator/                           # Root edition (Windows-ready default: `
 
 ---
 
-## 🛡️ PreToolUse Guard Rules Summary (`orchestrator_guard.py` v1.1.0)
+## 🛡️ PreToolUse Guard Rules Summary (`orchestrator_guard.py` v1.2.0)
 
 | Session Type | Tool / Condition | Decision | Behavior / Reason |
 | :--- | :--- | :--- | :--- |
 | **Main Session** | `run_command`, `search_web`, `mcp_*`, `call_mcp_tool` | **`deny`** | Pure Dispatcher boundary enforcement. |
 | **Main Session** | `read_file` / `write_file` / `edit_file` | **`allow` (scoped)** | Reads: `<artifactDir>/` & skill/plugin configs. Writes: strictly `<artifactDir>/scratch/`. Direct `implementation_plan.md` writes denied. |
 | **Main Session** | `invoke_subagent` (Prompt > 3,500 chars or Phase 0 with `self`) | **`deny`** | Anti-bloat cap (`MAX_SUBAGENT_PROMPT_CHARS = 3500`) & strict `TypeName="research"` for recon. |
-| **Main Session** | `invoke_subagent` (`retry_streak >= 2` after escalation/CB/retry cues) | **`deny`** | Two-Tier Escalation Gate: consult `@councillor` (Argon → Carbon) or `ask_question`. |
+| **Main Session** | `invoke_subagent` (`retry_streak >= 2` after escalation/CB/retry cues) | **`deny`** | Two-Tier Escalation Gate: consult `@councillor` (Neon → Carbon) or `ask_question`. |
 | **Main Session** | `send_message` to `research` or `>= 45` active steps | **`deny`** | `research` scouts are single-shot; `self` workers allow bounded follow-up `< 45` active steps (excluding `read_board`, `swarm_wait`). |
 | **Main Session** | `swarm`, `post_message`, `read_board`, `swarm_wait`, `run_workflow`, `ask_question`, `schedule`, `manage_task`, `manage_subagents`, `define_subagent` | **`allow`** | Native Antigravity 2.0 orchestration permitted. |
 | **Subagent / Swarm** | `ask_question` | **`deny`** | Enforces bubble-up to Main Session with `STATUS: CLARIFICATION_NEEDED`. |

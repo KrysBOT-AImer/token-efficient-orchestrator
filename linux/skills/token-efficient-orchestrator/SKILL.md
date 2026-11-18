@@ -2,20 +2,20 @@
 name: token-efficient-orchestrator
 description: >-
   Orchestrates multi-step tasks with the v6.0 Three-Family Model Matrix: Hydrogen (Low/Medium/High/XHigh)
-  for 80%+ Recon & Execution (Mode B run_workflow + persistent Mode C Swarm), Argon (Low/Medium/High)
+  for 80%+ Recon & Execution (Mode B run_workflow + persistent Mode C Swarm), Neon (Low/Medium/High/XHigh)
   for Dedicated Swarm Planner (@planner) & Tier-1 Councillor (@councillor), Carbon (Low/Medium/High) for
   Tier-2 @councillor deadlock escalation & critical security & compliance audits (@auditor), plus
-  Orchestrator (Argon)/(Carbon) Main Session Dispatcher.
+  Orchestrator (Neon)/(Carbon) Main Session Dispatcher.
 ---
 
 # Token-Efficient Task Orchestrator (v6.0 — Three-Family Cognitive Architecture)
 
 This skill governs Antigravity's `v6.0` cognitive orchestration architecture:
-1. **Pillar 1 — Main Session Pure Dispatcher**: Runs on `Hydrogen High` (`gemini-4-hydrogen-high`), `Orchestrator (Argon)` (`gemini-pro-orchestrator-argon`) for faster/lower-token dispatch, or `Orchestrator (Carbon)` (`gemini-pro-orchestrator`) for ultra-complex multi-system orchestration. Direct workspace edits, `run_command`, web search, MCP calls, writes outside `<artifactDirectoryPath>/scratch/`, and direct `implementation_plan.md` authoring are physically blocked by `orchestrator_guard.py`.
-2. **Pillar 2 — Dedicated Swarm `@planner` (`Argon`) & Two-Tier `@councillor` (`Argon` → `Carbon`)**:
-   - **`@planner`**: Spawned sequentially (`swarm(action="title")` then `swarm(action="add", name="planner", model="gemini-4-argon-medium", fork="coordinator", workspace="inherit", ...)` in separate turns). Exclusive author of `<parentArtifactDirectoryPath>/implementation_plan.md`.
-   - **Tier-1 `@councillor` (`Argon`)**: Spawned with `model="gemini-4-argon-medium"`, `fork="coordinator"`, `workspace="inherit"`. Strictly **Read-Only** (enforced by `orchestrator_guard.py`).
-   - **Tier-2 `@councillor` (`Carbon`) & `@auditor`**: Upgrade `@councillor` in-place via `swarm(action="model", name="councillor", model="gemini-4-carbon-medium")` (or `high`) ONLY when Argon hits a deadlock; spawn `@auditor` (`gemini-4-carbon-medium/high`) for critical security & compliance audits (RO-enforced when RO-flagged).
+1. **Pillar 1 — Main Session Pure Dispatcher**: Runs on `Hydrogen High` (`gemini-4-hydrogen-high`), `Orchestrator (Neon)` (`gemini-pro-orchestrator-neon`) for faster/lower-token dispatch, or `Orchestrator (Carbon)` (`gemini-pro-orchestrator`) for ultra-complex multi-system orchestration. Direct workspace edits, `run_command`, web search, MCP calls, writes outside `<artifactDirectoryPath>/scratch/`, and direct `implementation_plan.md` authoring are physically blocked by `orchestrator_guard.py`.
+2. **Pillar 2 — Dedicated Swarm `@planner` (`Neon`) & Two-Tier `@councillor` (`Neon` → `Carbon`)**:
+   - **`@planner`**: Spawned sequentially (`swarm(action="title")` then `swarm(action="add", name="planner", model="gemini-4-neon-medium", fork="coordinator", workspace="inherit", ...)` in separate turns). Exclusive author of `<parentArtifactDirectoryPath>/implementation_plan.md`.
+   - **Tier-1 `@councillor` (`Neon`)**: Spawned with `model="gemini-4-neon-medium"`, `fork="coordinator"`, `workspace="inherit"`. Strictly **Read-Only** (enforced by `orchestrator_guard.py`).
+   - **Tier-2 `@councillor` (`Carbon`) & `@auditor`**: Upgrade `@councillor` in-place via `swarm(action="model", name="councillor", model="gemini-4-carbon-medium")` (or `high`) ONLY when Neon hits a deadlock; spawn `@auditor` (`gemini-4-carbon-medium/high`) for critical security & compliance audits (RO-enforced when RO-flagged).
 3. **Pillar 3 — 80%+ Hydrogen Execution Fleet (Mode C Primary)**:
    - **Mode C (`swarm`, `workspace="share"`)**: **Primary** for multi-file/multi-step coding (preserves KV-cache across edits & tests).
    - **Mode B (`run_workflow(parallel=...)`)**: For parallel batch recon, lint sweeps, and structured JSON map-reduce (`flash`). (Calls to stateful or single-threaded MCP servers stay serialized across workers or via `pipeline()`.)
@@ -28,13 +28,13 @@ This skill governs Antigravity's `v6.0` cognitive orchestration architecture:
 
 | Family | Thinking / Variant | Exact Model ID / Subagent Alias | Primary Cognitive Role | Typical Workloads & Execution Target |
 | :--- | :--- | :--- | :--- | :--- |
-| **Orchestrator** | **Argon** | `gemini-pro-orchestrator-argon` | **Fast Main Dispatcher** | Lower-token, low-latency Pure Dispatcher (`Main Session`). |
+| **Orchestrator** | **Neon** | `gemini-pro-orchestrator-neon` | **Fast Main Dispatcher** | Lower-token, low-latency Pure Dispatcher (`Main Session`). |
 | **Orchestrator** | **Carbon** | `gemini-pro-orchestrator` | **Deep Main Dispatcher** | Ultra-complex multi-system orchestration (`Main Session`). |
 | **Hydrogen** | **Low** | `gemini-4-hydrogen-low` (`invoke_subagent: flash_lite`) | Instant Recon & Mechanical | File discovery, log grepping, CSV/JSON transforms, CLI lookups. Target: `invoke_subagent(Model="flash_lite")`, `run_workflow`. |
 | **Hydrogen** | **Medium** | `gemini-4-hydrogen-medium` (`invoke_subagent: flash`, `run_workflow: flash`) | Routine Execution & Scripting | Deep file/case inspection, routine scripts, unit tests, standard Mode C Swarm edits (`workspace="share"`). |
 | **Hydrogen** | **High** | `gemini-4-hydrogen-high` (`Main Session`, `invoke_subagent: inherit`) | Main Commander & Workhorse | Pure Dispatcher (`Main Session`), multi-file refactoring, Swarm Author/Verifier (`workspace="share"`). |
 | **Hydrogen** | **XHigh** | `gemini-4-hydrogen-xhigh` (`swarm`) | Deepest Hydrogen Execution | Concurrency/race debugging, escalated Hydrogen retries (`swarm(..., workspace="share")`). |
-| **Argon** | **Low / Medium / High** | `gemini-4-argon-low/medium/high` (`swarm`) | **`@planner` & Tier-1 `@councillor`** | `1M` context, fast interactive loops, lower token spend. `fork="coordinator"`, `workspace="inherit"`. |
+| **Neon** | **Low / Medium / High / XHigh** | `gemini-4-neon-low/medium/high/xhigh` (`swarm`) | **`@planner` & Tier-1 `@councillor`** | `1M` context, fast interactive loops, lower token spend (`xhigh` available for deepest architectural planning). `fork="coordinator"`, `workspace="inherit"`. |
 | **Carbon** | **Low / Medium / High** | `gemini-4-carbon-low/medium/high` (`swarm`) | **Tier-2 `@councillor` & Critical Audits** | `1M` context frontier reasoning. `swarm(action="model")` deadlock upgrade or `@auditor` (security & compliance). |
 
 ---
@@ -84,7 +84,7 @@ print(results)
 
 ---
 
-## 4. Phase 1: Argon Swarm Bridge (`@planner`) & Artifact-Only Plan
+## 4. Phase 1: Neon Swarm Bridge (`@planner`) & Artifact-Only Plan
 
 Execute `swarm(action="title")` and `swarm(action="add")` in **separate turns**:
 
@@ -94,11 +94,11 @@ swarm(action="title", title="Implementation Planning")
 ```
 
 ```python
-# Turn 2: Add @planner (Argon Medium default; Low for minor edits; High for complex architecture)
+# Turn 2: Add @planner (Neon Medium default; Low for minor edits; High/XHigh for complex/deepest architecture)
 swarm(
     action="add",
     name="planner",
-    model="gemini-4-argon-medium",
+    model="gemini-4-neon-medium",
     fork="coordinator",
     workspace="inherit",
     brief="""You are the dedicated Swarm Architect (@planner).
@@ -184,15 +184,15 @@ Reporting: End by calling send_message with STATUS: COMPLETED, CLARIFICATION_NEE
 * **6 `CIRCUIT_BREAKER_EXEMPT_TOOLS`**: `send_message`, `read_board`, `swarm_wait`, `post_message`, `manage_subagents`, `schedule`.
 * **Mandatory CB Hand-Off**: When CB triggers, workers MUST immediately call `send_message` or `post_message` (`STATUS: COMPLETED` or `STATUS: ESCALATE_REQUIRED`) — never exit via plain text.
 
-### B. Two-Tier Escalation Gate (`Argon` → `Carbon`)
+### B. Two-Tier Escalation Gate (`Neon` → `Carbon`)
 `orchestrator_guard.py` blocks `>= 2` consecutive `invoke_subagent` retries after `STATUS: ESCALATE_REQUIRED`, `CIRCUIT BREAKER`, `NO_VALID_SEND`, or retry keywords (`fix`, `retry`, `remaining`, `pass 2`, `pass_2`) until `@councillor` posts a strategy or `ask_question` is answered:
 
 ```python
-# Tier-1: Spawn Read-Only Argon @councillor (workspace="inherit")
+# Tier-1: Spawn Read-Only Neon @councillor (workspace="inherit")
 swarm(
     action="add",
     name="councillor",
-    model="gemini-4-argon-medium",
+    model="gemini-4-neon-medium",
     fork="coordinator",
     workspace="inherit",
     brief="""You are @councillor (strictly READ-ONLY).
@@ -200,7 +200,7 @@ Diagnose root cause of failure in Step X and post '@coordinator STRATEGY: [concr
 )
 swarm_wait(since=last_seq)
 
-# Tier-2: Upgrade in-place to Carbon ONLY if Tier-1 Argon fails to resolve deadlock
+# Tier-2: Upgrade in-place to Carbon ONLY if Tier-1 Neon fails to resolve deadlock
 swarm(action="model", name="councillor", model="gemini-4-carbon-medium")  # or gemini-4-carbon-high
 post_message(text="@councillor Deeper deadlock on edge case Y. Re-evaluate root cause.")
 swarm_wait(since=last_seq)

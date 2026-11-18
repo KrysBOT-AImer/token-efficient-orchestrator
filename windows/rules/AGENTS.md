@@ -6,10 +6,10 @@ You MUST strictly follow this orchestrator rule for all user requests across all
 
 ## 1. Pure-Dispatcher Main Session & Three-Family Model Matrix
 
-The orchestrator operates under the **Three-Family Model Matrix (`Hydrogen` + `Argon` + `Carbon` + `Orchestrator (Argon)/(Carbon)`)** for extreme token efficiency, KV-cache reuse, and deterministic orchestration via native Antigravity 2.0 primitives:
+The orchestrator operates under the **Three-Family Model Matrix (`Hydrogen` + `Neon` + `Carbon` + `Orchestrator (Neon)/(Carbon)`)** for extreme token efficiency, KV-cache reuse, and deterministic orchestration via native Antigravity 2.0 primitives:
 
 ### A. Main Session Commander (Pure Dispatcher)
-* **Supported Models**: `Hydrogen High` (`gemini-4-hydrogen-high`), `Orchestrator (Argon)` (`gemini-pro-orchestrator-argon`) for faster/lower-token dispatch, or `Orchestrator (Carbon)` (`gemini-pro-orchestrator`) for ultra-complex multi-system orchestration.
+* **Supported Models**: `Hydrogen High` (`gemini-4-hydrogen-high`), `Orchestrator (Neon)` (`gemini-pro-orchestrator-neon`) for faster/lower-token dispatch, or `Orchestrator (Carbon)` (`gemini-pro-orchestrator`) for ultra-complex multi-system orchestration.
 * **Role**: Pure Dispatcher, Grill-Me Interviewer (`ask_question`), Swarm Coordinator, and Final Reviewer.
 * **Strict Platform Boundary (`orchestrator_guard.py`)**:
   1. Physically prohibited from running direct operational tools (`run_command`, workspace `read_file`/`write_file`/`edit_file`, `grep_search`, `find_by_name`, `list_dir`, `search_web`, `call_mcp_tool`, or direct `mcp_*` tools).
@@ -22,10 +22,10 @@ The orchestrator operates under the **Three-Family Model Matrix (`Hydrogen` + `A
 
 ### B. Dedicated Swarm Planner (`@planner`) & Two-Tier Councillor (`@councillor` / `@auditor`)
 * **Sequential Swarm Initialization**: `swarm(action="title", ...)` and `swarm(action="add", ...)` MUST be invoked **sequentially in separate turns** (never concurrently in the same turn).
-* **`@planner` (Argon)**: Spawned via `swarm(action="add", name="planner", model="gemini-4-argon-medium", fork="coordinator", workspace="inherit", brief="...")` (`gemini-4-argon-low` for minor revisions; `gemini-4-argon-high` for complex cross-system architecture). Holds exclusive write authority for `<parentArtifactDirectoryPath>/implementation_plan.md`.
-* **`@councillor` (Tier-1 Argon → Tier-2 Carbon)**:
-  - **Tier-1 (`Argon`)**: Spawned via `swarm(action="add", name="councillor", model="gemini-4-argon-medium", fork="coordinator", workspace="inherit", brief="...")` (or `gemini-4-argon-high`). Strictly **Read-Only** (`orchestrator_guard.py` hard-blocks file writes, `STATE_MODIFYING_MCP_TOOLS`, and mutating shell commands).
-  - **Tier-2 (`Carbon`)**: Reserved strictly for deadlocks Tier-1 Argon cannot resolve. Upgrade in-place via `swarm(action="model", name="councillor", model="gemini-4-carbon-medium")` (or `gemini-4-carbon-high`), preserving conversation context.
+* **`@planner` (Neon)**: Spawned via `swarm(action="add", name="planner", model="gemini-4-neon-medium", fork="coordinator", workspace="inherit", brief="...")` (`gemini-4-neon-low` for minor revisions; `gemini-4-neon-high` for complex cross-system architecture; `gemini-4-neon-xhigh` available for deepest architectural planning). Holds exclusive write authority for `<parentArtifactDirectoryPath>/implementation_plan.md`.
+* **`@councillor` (Tier-1 Neon → Tier-2 Carbon)**:
+  - **Tier-1 (`Neon`)**: Spawned via `swarm(action="add", name="councillor", model="gemini-4-neon-medium", fork="coordinator", workspace="inherit", brief="...")` (or `gemini-4-neon-high`). Strictly **Read-Only** (`orchestrator_guard.py` hard-blocks file writes, `STATE_MODIFYING_MCP_TOOLS`, and mutating shell commands).
+  - **Tier-2 (`Carbon`)**: Reserved strictly for deadlocks Tier-1 Neon cannot resolve. Upgrade in-place via `swarm(action="model", name="councillor", model="gemini-4-carbon-medium")` (or `gemini-4-carbon-high`), preserving conversation context.
 * **`@auditor` (Carbon)**: Reserved for critical security & compliance audits (`gemini-4-carbon-medium/high`). Enforced as Read-Only when RO-flagged (`read-only`, `do not modify/edit/write files`, `[read-only]`, `[read_only]`, `[ro]`).
 * **Zero-Token Idle State**: Swarm workers sleep in `waiting` state at zero token cost; nudge via `post_message` and wait via `swarm_wait()`.
 
@@ -38,12 +38,12 @@ The orchestrator operates under the **Three-Family Model Matrix (`Hydrogen` + `A
 
 | Family | Thinking / Level | Exact Model ID / Subagent Alias | Primary Cognitive Role | Execution Target |
 | :--- | :--- | :--- | :--- | :--- |
-| **Orchestrator** | **Argon / Carbon** | `gemini-pro-orchestrator-argon` / `gemini-pro-orchestrator` | Main Session Pure Dispatcher | `Main Session` (faster dispatch vs complex multi-system) |
+| **Orchestrator** | **Neon / Carbon** | `gemini-pro-orchestrator-neon` / `gemini-pro-orchestrator` | Main Session Pure Dispatcher | `Main Session` (faster dispatch vs complex multi-system) |
 | **Hydrogen** | **Low** | `gemini-4-hydrogen-low` (`invoke_subagent: flash_lite`) | Instant Recon & Mechanical | `invoke_subagent: flash_lite`, `run_workflow` |
 | **Hydrogen** | **Medium** | `gemini-4-hydrogen-medium` (`invoke_subagent: flash`, `run_workflow: flash`) | Routine Execution & Scripting | `swarm: workspace="share"`, `run_workflow`, `invoke_subagent: flash` |
 | **Hydrogen** | **High** | `gemini-4-hydrogen-high` (`Main Session`, `invoke_subagent: inherit`) | Main Commander & Analytical Workhorse | `Main Session`, `swarm: workspace="share"`, `invoke_subagent: inherit` |
 | **Hydrogen** | **XHigh** | `gemini-4-hydrogen-xhigh` (`swarm`) | Deepest Hydrogen Execution | `swarm: workspace="share"` |
-| **Argon** | **Low / Medium / High** | `gemini-4-argon-low/medium/high` (`swarm`) | **`@planner` & Tier-1 `@councillor`** (`1M` context, fast interactive) | `swarm` (`fork="coordinator"`, `workspace="inherit"`) |
+| **Neon** | **Low / Medium / High / XHigh** | `gemini-4-neon-low/medium/high/xhigh` (`swarm`) | **`@planner` & Tier-1 `@councillor`** (`1M` context, fast interactive; `xhigh` for deepest architecture) | `swarm` (`fork="coordinator"`, `workspace="inherit"`) |
 | **Carbon** | **Low / Medium / High** | `gemini-4-carbon-low/medium/high` (`swarm`) | **Tier-2 `@councillor` & Critical Audits** (`1M` context, frontier) | `swarm(action="model")` upgrade or `@auditor` |
 
 ---
@@ -73,11 +73,11 @@ Immediately after Phase 0 recon returns (or immediately on self-contained tasks)
 
 ---
 
-## 4. Phase 1: Argon-Authored Upfront Execution Plan (`implementation_plan.md`) & Approval Gate
+## 4. Phase 1: Neon-Authored Upfront Execution Plan (`implementation_plan.md`) & Approval Gate
 
-1. **Sequential Argon Swarm Delegation**:
+1. **Sequential Neon Swarm Delegation**:
    - **Turn 1**: `swarm(action="title", title="Implementation Planning")`
-   - **Turn 2**: `swarm(action="add", name="planner", model="gemini-4-argon-medium", fork="coordinator", workspace="inherit", brief="Draft <parentArtifactDirectoryPath>/implementation_plan.md...")`
+   - **Turn 2**: `swarm(action="add", name="planner", model="gemini-4-neon-medium", fork="coordinator", workspace="inherit", brief="Draft <parentArtifactDirectoryPath>/implementation_plan.md...")`
    - Wait via `swarm_wait()`. `@planner` writes `<parentArtifactDirectoryPath>/implementation_plan.md` with `ArtifactMetadata: {RequestFeedback: true, UserFacing: true, Summary: "..."}`.
 2. **Mandatory Plan Sections**: `1. Reconnaissance & Grill-Me Alignment Summary`, `2. Subagent Execution & Model Routing Table`, `3. Proposed Changes`, `4. Verification Plan`.
 3. **Plan Revision Loop**: Nudge `@planner` via `post_message("@planner ...")` and wait via `swarm_wait()`.
@@ -105,11 +105,11 @@ Every worker MUST end its turn with one of:
 - **6 `CIRCUIT_BREAKER_EXEMPT_TOOLS`**: `send_message`, `read_board`, `swarm_wait`, `post_message`, `manage_subagents`, `schedule`.
 - **Mandatory Hand-Off**: When CB triggers, workers MUST immediately call `send_message` (subagent) or `post_message` + `swarm_wait` (Swarm) with `STATUS: COMPLETED` or `STATUS: ESCALATE_REQUIRED` — never exit via plain text.
 
-### C. Two-Tier Escalation Gate (`Hydrogen → Argon → Carbon`)
+### C. Two-Tier Escalation Gate (`Hydrogen → Neon → Carbon`)
 1. **Hydrogen Escalation**: `Hydrogen Low/Medium` → `Hydrogen High` / `XHigh`.
 2. **Guard-Enforced Two-Tier Gate**: `orchestrator_guard.py` blocks `>= 2` consecutive `invoke_subagent` retries after `STATUS: ESCALATE_REQUIRED`, `CIRCUIT BREAKER`, `NO_VALID_SEND`, or retry keywords (`fix`, `retry`, `remaining`, `pass 2`, `pass_2`) until:
-   - **Tier-1 `@councillor` (Argon)**: `swarm(action="add", name="councillor", model="gemini-4-argon-medium", fork="coordinator", workspace="inherit", brief="...")` + `swarm_wait()`.
-   - **Tier-2 `@councillor` (Carbon)**: If Argon fails to resolve the deadlock, upgrade in-place via `swarm(action="model", name="councillor", model="gemini-4-carbon-medium")` (or `high`) + `post_message("@councillor ...")` + `swarm_wait()`.
+   - **Tier-1 `@councillor` (Neon)**: `swarm(action="add", name="councillor", model="gemini-4-neon-medium", fork="coordinator", workspace="inherit", brief="...")` + `swarm_wait()`.
+   - **Tier-2 `@councillor` (Carbon)**: If Neon fails to resolve the deadlock, upgrade in-place via `swarm(action="model", name="councillor", model="gemini-4-carbon-medium")` (or `high`) + `post_message("@councillor ...")` + `swarm_wait()`.
    - **User Gate**: Call `ask_question` if Tier-2 Carbon + Hydrogen still cannot unblock or if `CLARIFICATION_NEEDED` arises.
 
 ### D. Remote Integration Fail-Fast Policy (15s Timeout) & Batch Queries

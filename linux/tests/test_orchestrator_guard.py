@@ -287,7 +287,7 @@ class TestIsSubagentSessionAndTranscripts(unittest.TestCase):
                         "args": {
                             "action": "add",
                             "name": "planner",
-                            "model": "Argon",
+                            "model": "Neon",
                             "brief": "You are a worker in a native swarm on shared message board <swarm_worker>",
                         },
                     }
@@ -959,7 +959,7 @@ class TestV5OrchestratorFeatures(unittest.TestCase):
 
     def test_main_session_allows_swarm_and_workflow_tools(self):
         v5_tools = [
-            ("swarm", {"action": "add", "name": "planner", "model": "Argon", "fork": "coordinator"}),
+            ("swarm", {"action": "add", "name": "planner", "model": "Neon", "fork": "coordinator"}),
             ("post_message", {"Recipient": "@planner", "Message": "Draft plan"}),
             ("read_board", {}),
             ("swarm_wait", {"timeout": 30}),
@@ -995,7 +995,7 @@ class TestV5OrchestratorFeatures(unittest.TestCase):
         res_write = evaluate_pre_tool_use(payload_write)
         self.assertEqual(res_write.get("decision"), "deny")
         self.assertIn("@planner", res_write.get("reason", ""))
-        self.assertIn("Argon", res_write.get("reason", ""))
+        self.assertIn("Neon", res_write.get("reason", ""))
 
         # 2. Main session edit_file to implementation_plan.md -> denied
         payload_edit = {
@@ -2053,8 +2053,8 @@ class TestSwarmWakeupAndCircuitBreaker(unittest.TestCase):
         self.assertIn("CIRCUIT BREAKER", res_genuine.get("reason", ""))
 
 
-class TestArgonAndCarbonEscalation(unittest.TestCase):
-    """Tests @councillor / RO @auditor Read-Only enforcement and the Two-Tier Argon -> Carbon Escalation Gate."""
+class TestNeonAndCarbonEscalation(unittest.TestCase):
+    """Tests @councillor / RO @auditor Read-Only enforcement and the Two-Tier Neon -> Carbon Escalation Gate."""
 
     def setUp(self):
         _PARENT_ID_CACHE.clear()
@@ -2207,8 +2207,8 @@ class TestArgonAndCarbonEscalation(unittest.TestCase):
             "allow",
         )
 
-    def test_main_session_retry_escalation_gate_argon_and_carbon_and_ask_question(self):
-        """Tests >=2 invoke_subagent retry block after escalation/retry cues and unblock via @councillor (Argon & Carbon) or ask_question."""
+    def test_main_session_retry_escalation_gate_neon_and_carbon_and_ask_question(self):
+        """Tests >=2 invoke_subagent retry block after escalation/retry cues and unblock via @councillor (Neon & Carbon) or ask_question."""
         tp = os.path.join(self.temp_dir.name, "main_transcript.jsonl")
 
         def write_records(records: list) -> None:
@@ -2243,12 +2243,12 @@ class TestArgonAndCarbonEscalation(unittest.TestCase):
                 res_block = evaluate_pre_tool_use(invoke_payload())
                 self.assertEqual(res_block.get("decision"), "deny")
                 self.assertIn("ORCHESTRATOR ESCALATION GATE (v6.0)", res_block.get("reason", ""))
-                self.assertIn("gemini-4-argon-medium", res_block.get("reason", ""))
+                self.assertIn("gemini-4-neon-medium", res_block.get("reason", ""))
                 self.assertIn("ask_question", res_block.get("reason", ""))
 
                 # Swarm / post_message / ask_question remain allowed during gate block
                 for ok_tool, ok_args in (
-                    ("swarm", {"action": "add", "name": "councillor", "model": "gemini-4-argon-medium", "fork": "coordinator", "brief": "Advise"}),
+                    ("swarm", {"action": "add", "name": "councillor", "model": "gemini-4-neon-medium", "fork": "coordinator", "brief": "Advise"}),
                     ("post_message", {"text": "@councillor Please advise"}),
                     ("ask_question", {"questions": []}),
                 ):
@@ -2266,21 +2266,21 @@ class TestArgonAndCarbonEscalation(unittest.TestCase):
         write_records(records_retry_kw)
         self.assertEqual(evaluate_pre_tool_use(invoke_payload("Worker", "Continue")).get("decision"), "deny")
 
-        # Case C: Full Tier-1 Argon -> board strategy unblock -> repeat failure -> Tier-2 Carbon swarm(action="model") -> board strategy unblock
+        # Case C: Full Tier-1 Neon -> board strategy unblock -> repeat failure -> Tier-2 Carbon swarm(action="model") -> board strategy unblock
         records_flow = [
             {"source": "USER_EXPLICIT", "type": "USER_INPUT", "content": "Implement schema parser."},
             {"source": "SYSTEM", "type": "SYSTEM_MESSAGE", "content": "[Message] timestamp=2026-11-18T12:00:00Z sender=sub1 content=STATUS: ESCALATE_REQUIRED"},
             {"source": "MODEL", "type": "PLANNER_RESPONSE", "tool_calls": [{"name": "invoke_subagent", "args": {"TypeName": "self", "Role": "Implementer", "Prompt": "Retry step 1"}}]},
             {"source": "MODEL", "type": "PLANNER_RESPONSE", "tool_calls": [{"name": "invoke_subagent", "args": {"TypeName": "self", "Role": "Implementer", "Prompt": "Retry step 2"}}]},
-            # Coordinator adds Tier-1 Argon @councillor
-            {"source": "MODEL", "type": "PLANNER_RESPONSE", "tool_calls": [{"name": "swarm", "args": {"action": "add", "name": "councillor", "model": "gemini-4-argon-medium", "fork": "coordinator", "brief": "Diagnose"}}]},
+            # Coordinator adds Tier-1 Neon @councillor
+            {"source": "MODEL", "type": "PLANNER_RESPONSE", "tool_calls": [{"name": "swarm", "args": {"action": "add", "name": "councillor", "model": "gemini-4-neon-medium", "fork": "coordinator", "brief": "Diagnose"}}]},
         ]
         write_records(records_flow)
-        # Still blocked before @councillor posts on board (now at Tier-1 Argon -> instructs upgrade to Carbon if unresolved)
-        res_waiting_argon = evaluate_pre_tool_use(invoke_payload())
-        self.assertEqual(res_waiting_argon.get("decision"), "deny")
-        self.assertIn("Tier-1 Argon @councillor", res_waiting_argon.get("reason", ""))
-        self.assertIn("gemini-4-carbon-medium", res_waiting_argon.get("reason", ""))
+        # Still blocked before @councillor posts on board (now at Tier-1 Neon -> instructs upgrade to Carbon if unresolved)
+        res_waiting_neon = evaluate_pre_tool_use(invoke_payload())
+        self.assertEqual(res_waiting_neon.get("decision"), "deny")
+        self.assertIn("Tier-1 Neon @councillor", res_waiting_neon.get("reason", ""))
+        self.assertIn("gemini-4-carbon-medium", res_waiting_neon.get("reason", ""))
 
         # @councillor posts strategy on board (observed via read_board TOOL_RESPONSE) -> unblocks
         records_flow.append({
@@ -2292,7 +2292,7 @@ class TestArgonAndCarbonEscalation(unittest.TestCase):
         write_records(records_flow)
         self.assertEqual(evaluate_pre_tool_use(invoke_payload()).get("decision"), "allow")
 
-        # Now subsequent 2 retries after another CIRCUIT BREAKER with Argon tier -> prompts Tier-2 Carbon upgrade
+        # Now subsequent 2 retries after another CIRCUIT BREAKER with Neon tier -> prompts Tier-2 Carbon upgrade
         records_flow.extend([
             {"source": "SYSTEM", "type": "SYSTEM_MESSAGE", "content": "[Message] timestamp=2026-11-18T12:05:00Z sender=sub2 content=CIRCUIT BREAKER (Turn Budget Reached)"},
             {"source": "MODEL", "type": "PLANNER_RESPONSE", "tool_calls": [{"name": "invoke_subagent", "args": {"TypeName": "self", "Role": "Implementer", "Prompt": "Fix remaining slice"}}]},

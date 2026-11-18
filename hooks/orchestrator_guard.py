@@ -3,19 +3,19 @@
 Token-Efficient Task Orchestrator v6.0 — PreToolUse Enforcement Guard
 
 Enforces:
-1. Pure-Dispatcher Main Session (Hydrogen High / Orchestrator Argon / Orchestrator Carbon):
+1. Pure-Dispatcher Main Session (Hydrogen High / Orchestrator Neon / Orchestrator Carbon):
    - Prohibits direct execution of terminal commands (run_command), web searches,
      and MCP tool calls in the Main Session.
    - Restricts file reads in the Main Session to conversation artifacts (<artifactDirectoryPath>/)
      and skill/plugin definitions, and restricts Main Session file writes strictly to
      <artifactDirectoryPath>/scratch/.
    - Prohibits the Main Session from writing or editing implementation_plan.md directly;
-     plan creation and revisions must be delegated to the dedicated Argon @planner
-     worker via native swarm(action='add', name='planner', model='gemini-4-argon-medium', fork='coordinator').
+     plan creation and revisions must be delegated to the dedicated Neon @planner
+     worker via native swarm(action='add', name='planner', model='gemini-4-neon-medium', fork='coordinator').
    - Restricts invoke_subagent: Phase 0 / Read-Only reconnaissance subagents MUST use TypeName='research'.
    - Enforces Two-Tier Escalation Gate: blocks repeated invoke_subagent retry loops
-     (retry_streak >= 2 after escalation/CB/retry cues) until @councillor (Tier-1 Argon
-     gemini-4-argon-medium/high, or Tier-2 Carbon gemini-4-carbon-medium/high via
+     (retry_streak >= 2 after escalation/CB/retry cues) until @councillor (Tier-1 Neon
+     gemini-4-neon-medium/high, or Tier-2 Carbon gemini-4-carbon-medium/high via
      swarm(action='model')) or ask_question is consulted.
    - Restricts send_message: Anti-recycling guards prevent reusing completed read-only
      subagents or overloaded Phase 2 worker subagents (>= 45 active steps).
@@ -1769,7 +1769,7 @@ def _inspect_parent_escalation_state(payload: Dict[str, Any]) -> Dict[str, Any]:
                     model = str(tc_args.get("model") or "").lower()
                     if name == "councillor" or name.startswith("councillor-"):
                         if action == "add":
-                            councillor_tier = "carbon" if "carbon" in model else "argon"
+                            councillor_tier = "carbon" if "carbon" in model else "neon"
                             councillor_consulted = True
                         elif action == "model" and "carbon" in model:
                             councillor_tier = "carbon"
@@ -1995,10 +1995,10 @@ def evaluate_pre_tool_use(payload: Dict[str, Any]) -> Dict[str, Any]:
         esc_state = _inspect_parent_escalation_state(payload)
         if esc_state["retry_streak"] >= 2:
             tier = esc_state.get("councillor_tier")
-            if tier == "argon":
+            if tier == "neon":
                 reason = (
                     "ORCHESTRATOR ESCALATION GATE (v6.0): Blocked after >= 2 consecutive invoke_subagent retries "
-                    "following Tier-1 Argon @councillor consultation. Upgrade @councillor in-place to Tier-2 Carbon via "
+                    "following Tier-1 Neon @councillor consultation. Upgrade @councillor in-place to Tier-2 Carbon via "
                     "swarm(action='model', name='councillor', model='gemini-4-carbon-medium') and post_message('@councillor ...') "
                     "+ swarm_wait(), or call ask_question to escalate to the user."
                 )
@@ -2011,8 +2011,8 @@ def evaluate_pre_tool_use(payload: Dict[str, Any]) -> Dict[str, Any]:
             else:
                 reason = (
                     "ORCHESTRATOR ESCALATION GATE (v6.0): Blocked after >= 2 consecutive invoke_subagent retries "
-                    "without resolving the deadlock. Consult Tier-1 @councillor (Argon) first via "
-                    "swarm(action='add', name='councillor', model='gemini-4-argon-medium', fork='coordinator', brief='...') "
+                    "without resolving the deadlock. Consult Tier-1 @councillor (Neon) first via "
+                    "swarm(action='add', name='councillor', model='gemini-4-neon-medium', fork='coordinator', brief='...') "
                     "+ swarm_wait(), or call ask_question. Retries resume once @councillor posts a strategy or ask_question is answered."
                 )
             return {"decision": "deny", "reason": reason}
@@ -2072,8 +2072,8 @@ def evaluate_pre_tool_use(payload: Dict[str, Any]) -> Dict[str, Any]:
                 "decision": "deny",
                 "reason": (
                     "ORCHESTRATOR GUARD BLOCKED (v6.0): Main Session is prohibited from directly writing or editing implementation_plan.md. "
-                    "Delegate plan authoring to the dedicated Argon @planner worker via "
-                    "swarm(action='add', name='planner', model='gemini-4-argon-medium', fork='coordinator', brief='...') and swarm_wait()."
+                    "Delegate plan authoring to the dedicated Neon @planner worker via "
+                    "swarm(action='add', name='planner', model='gemini-4-neon-medium', fork='coordinator', brief='...') and swarm_wait()."
                 ),
             }
 
@@ -2084,7 +2084,7 @@ def evaluate_pre_tool_use(payload: Dict[str, Any]) -> Dict[str, Any]:
                 "The Main Session is a strictly Pure Dispatcher and may only write scratch files inside "
                 f"'{os.path.join(artifact_dir, 'scratch') if artifact_dir else '<artifactDirectoryPath>/scratch/'}'. "
                 "Delegate workspace modifications to persistent Mode C Swarm workers (workspace='share'), Mode B run_workflow, "
-                "or invoke_subagent ('flash'/'flash_lite' for 80%+ routine work, 'gemini-4-argon-medium' for @planner/Tier-1 @councillor, "
+                "or invoke_subagent ('flash'/'flash_lite' for 80%+ routine work, 'gemini-4-neon-medium' for @planner/Tier-1 @councillor, "
                 "'gemini-4-carbon-medium' for Tier-2 @councillor/critical audits)."
             ),
         }
@@ -2111,10 +2111,10 @@ def evaluate_pre_tool_use(payload: Dict[str, Any]) -> Dict[str, Any]:
             f"[Orchestrator Pure-Dispatcher Guard] Direct execution of '{tool_name}' in the Main Session is prohibited. "
             "The Main Session is a strictly Pure Dispatcher. Delegate reconnaissance, file operations, "
             "terminal commands, and MCP calls to Mode B 'run_workflow', Mode C Swarm workers (workspace='share'), or 'invoke_subagent' "
-            "(Hydrogen 'flash'/'flash_lite' for 80%+ recon/routine work; 'gemini-4-argon-medium' for @planner & Tier-1 @councillor; "
+            "(Hydrogen 'flash'/'flash_lite' for 80%+ recon/routine work; 'gemini-4-neon-medium' for @planner & Tier-1 @councillor; "
             "'gemini-4-carbon-medium' for Tier-2 @councillor & critical audits; Main Session runs on 'gemini-4-hydrogen-high', "
-            "'gemini-pro-orchestrator-argon', or 'gemini-pro-orchestrator'), run Phase 0.5 Grill-Me ('ask_question'), "
-            "and delegate planning to Argon @planner via swarm(action='add', name='planner', model='gemini-4-argon-medium', fork='coordinator', brief='...')."
+            "'gemini-pro-orchestrator-neon', or 'gemini-pro-orchestrator'), run Phase 0.5 Grill-Me ('ask_question'), "
+            "and delegate planning to Neon @planner via swarm(action='add', name='planner', model='gemini-4-neon-medium', fork='coordinator', brief='...')."
         ),
     }
 
