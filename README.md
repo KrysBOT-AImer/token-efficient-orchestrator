@@ -1,4 +1,4 @@
-# Token-Efficient Task Orchestrator (v1.2 — Three-Family Model Matrix)
+# Token-Efficient Task Orchestrator (v1.3.0 — Three-Family Model Matrix)
 
 > [!CAUTION]
 > **Experimental Software — Use Strictly at Your Own Risk**
@@ -7,7 +7,7 @@
 >
 > **Recommended Installation Approach:** Instead of a direct, blind drop-in installation, **inspect the source code and rules first** (`hooks/orchestrator_guard.py`, `rules/AGENTS.md`, `skills/token-efficient-orchestrator/SKILL.md`), or **have your own AI coding agent review, adapt, and install it** to fit your specific environment, tools, and workflow needs.
 
-A high-precision, token-efficient cognitive orchestration system for **Google Antigravity** (cognitive architecture **v1.2**). Built around the **Three-Family Model Matrix** (`Hydrogen` + `Neon` + `Carbon` + `Orchestrator (Neon)/(Carbon)`): **Hydrogen** (4 thinking levels: Low, Medium, High, XHigh) handling 80%+ of Recon and Execution, **Neon** (4 thinking levels: Low, Medium, High, XHigh) powering the Dedicated Swarm Planner (`@planner`) and Tier-1 Councillor (`@councillor`), and **Carbon** (3 thinking levels: Low, Medium, High) reserved strictly for Tier-2 `@councillor` deadlock escalation and critical security & compliance audits (`@auditor`).
+A high-precision, token-efficient cognitive orchestration system for **Google Antigravity** (cognitive architecture **v1.3.0**). Built around the **Three-Family Model Matrix** (`Hydrogen` + `Neon` + `Carbon` + `Orchestrator (Neon)/(Carbon)`): **Hydrogen** (4 thinking levels: Low, Medium, High, XHigh) handling 80%+ of Recon and Execution, **Neon** (4 thinking levels: Low, Medium, High, XHigh) powering the Dedicated Swarm Planner (`@planner`) and Tier-1 Councillor (`@councillor`), and **Carbon** (3 thinking levels: Low, Medium, High) reserved strictly for Tier-2 `@councillor` deadlock escalation and critical security & compliance audits (`@auditor`).
 
 ---
 
@@ -21,7 +21,7 @@ The `main` branch hosts synchronized, side-by-side platform bundles so every fil
 
 | Edition | Hook Launcher | Key Highlights | Guide |
 | :--- | :--- | :--- | :--- |
-| **[`windows/`](./windows/)** (Windows) | `python -B` | Native `python.exe`; drive/UNC/MSYS path normalization + v1.2 Neon matrix | [Windows Guide](windows/README.md) |
+| **[`windows/`](./windows/)** (Windows) | `python -B` | Native `python.exe`; drive/UNC/MSYS path normalization + v1.3.0 Neon matrix | [Windows Guide](windows/README.md) |
 | **[`linux/`](./linux/)** (Linux / POSIX) | `python3 -B` | Executable `100755` `.py` files; POSIX + PowerShell RO guards; non-blocking FIFO/`stdin` | [Linux Guide](linux/README.md) |
 | **[`/`](./)** (Root / Universal) | `python -B` | Mirrors `windows/` for direct `git clone` into `plugins/orchestrator` | [Quick Start](#quick-install-commands) |
 
@@ -42,6 +42,11 @@ cp -a ./linux/. ~/.gemini/config/plugins/orchestrator/
 chmod +x ~/.gemini/config/plugins/orchestrator/hooks/orchestrator_guard.py
 ```
 
+### What's New in v1.3.0 (Windows & Linux)
+* **Phase 0.5 Pre-Grilling Mode Selector & Brainstorming**: Replaces the rigid Deterministic Checkpoint with a 2–4 bullet Phase 0 recon recap and an `ask_question` mode selector (`Standard grill-me`, `No grilling needed`, `Brainstorming`) with dynamic `(Recommended)` ordering, explicit prompt overrides, and mandatory distillation of Brainstorming sessions into `<artifactDirectoryPath>/scratch/brainstorm_notes.md`.
+* **Two-Stage 3-Layer Kanban Planning (`implementation_plan.md` → Lazy `kanban/`)**: Stage 1A produces a lean 4-section human-control `implementation_plan.md`; post-approval, Stage 1B wakes sleeping `@planner` (warm KV cache) to materialize `kanban/board.md` (Main Session dispatch index) and self-contained `kanban/WP-XX_<slug>.md` worker cards (`UserFacing: false, RequestFeedback: false`).
+* **Guard Hardening & Unified `v1.3.0` Versioning**: Enforces `@planner`-only write authority on `implementation_plan.md` and `kanban/**`, blocks Main Session writes to `kanban/**` while keeping `kanban/board.md` read-only, blocks stale `/brain/<other_id>/kanban/**` cross-session access, and unifies all active version strings across root `/`, `linux/`, and `windows/` to `v1.3.0`.
+
 ### What's New in v1.2.0 (Windows & Linux)
 * **Gemini Neon Migration (4 Thinking Levels)**: Upgraded the Three-Family Model Matrix to **Gemini Neon** (`gemini-4-neon-low`, `gemini-4-neon-medium`, `gemini-4-neon-high`, `gemini-4-neon-xhigh`) for `@planner` and Tier-1 `@councillor`, and updated the fast dispatcher to **`Orchestrator (Neon)`** (`gemini-pro-orchestrator-neon`).
 * **Synchronized Three-Tree Update**: Updated `hooks/orchestrator_guard.py` (Tier-1 `"neon"` escalation state and messages), `rules/AGENTS.md`, `skills/token-efficient-orchestrator/SKILL.md`, `plugin.json` (`1.2.0`), and `tests/test_orchestrator_guard.py` (`TestNeonAndCarbonEscalation`) identically across root `/`, `linux/`, and `windows/`.
@@ -60,13 +65,13 @@ chmod +x ~/.gemini/config/plugins/orchestrator/hooks/orchestrator_guard.py
 
 ### 1. Main Session Commander (Pure Dispatcher)
 * **Supported Models**: `Hydrogen High` (`gemini-4-hydrogen-high`), `Orchestrator (Neon)` (`gemini-pro-orchestrator-neon`) for faster/lower-token dispatch, or `Orchestrator (Carbon)` (`gemini-pro-orchestrator`) for ultra-complex multi-system orchestration.
-* **Platform-Level Guard**: Enforced via `orchestrator-pure-dispatcher-guard` (`hooks/orchestrator_guard.py`). The Main Session is physically blocked from executing workspace file edits, shell commands (`run_command`), web searches, MCP tools, **writing outside `<artifactDirectoryPath>/scratch/`**, and **directly writing or editing `implementation_plan.md`**.
+* **Platform-Level Guard**: Enforced via `orchestrator-pure-dispatcher-guard` (`hooks/orchestrator_guard.py`). The Main Session is physically blocked from executing workspace file edits, shell commands (`run_command`), web searches, MCP tools, **writing outside `<artifactDirectoryPath>/scratch/`**, and **directly writing or editing `implementation_plan.md` or `kanban/**`** (retaining read-only access to `<artifactDirectoryPath>/` including `kanban/board.md`).
 
 ### 2. Dedicated Swarm Planner & Two-Tier Councillor (`Neon` → `Carbon`)
 * **Dedicated Swarm Planner (`@planner`)**: Spawned sequentially (`swarm(action="title")` then `swarm(action="add", name="planner", model="gemini-4-neon-medium", fork="coordinator", workspace="inherit", brief="...")` in separate turns).
-  * **Warm Coordinator Fork**: Inherits complete Phase 0 recon and Phase 0.5 Grill-Me history via `fork="coordinator"`.
-  * **Artifact-Only Author**: Exclusively authors and updates `<parentArtifactDirectoryPath>/implementation_plan.md` (`gemini-4-neon-low` for minor edits, `gemini-4-neon-medium` default, `gemini-4-neon-high` for complex architecture, `gemini-4-neon-xhigh` available for deepest architectural planning).
-  * **Zero Token Cost in Standby**: Sleeps in `waiting` state at zero token cost until nudged via `post_message`.
+  * **Warm Coordinator Fork**: Inherits complete Phase 0 recon and Phase 0.5 alignment/brainstorming history via `fork="coordinator"`.
+  * **Two-Stage 3-Layer Author**: Holds exclusive write authority over `<parentArtifactDirectoryPath>/implementation_plan.md` (Stage 1A lean human-control overview) and `<parentArtifactDirectoryPath>/kanban/**` (Stage 1B post-approval lazy materialization of `kanban/board.md` and `kanban/WP-XX_<slug>.md` cards). (`gemini-4-neon-low` for minor edits, `gemini-4-neon-medium` default, `gemini-4-neon-high` for complex architecture, `gemini-4-neon-xhigh` available for deepest architectural planning.)
+  * **Zero Token Cost in Standby**: Sleeps in `waiting` state at zero token cost until nudged via `post_message` (including Stage 1B wakeup).
 * **Two-Tier Councillor (`@councillor`) & Escalation Gate**:
   * **Tier-1 (`Neon`)**: Spawned via `swarm(action="add", name="councillor", model="gemini-4-neon-medium", fork="coordinator", workspace="inherit", brief="...")`. Strictly **Read-Only** (`orchestrator_guard.py` hard-blocks file writes, mutating MCP tools, and mutating shell commands).
   * **Tier-2 (`Carbon`)**: Upgraded in-place via `swarm(action="model", name="councillor", model="gemini-4-carbon-medium")` (or `high`) ONLY if Tier-1 Neon cannot resolve the deadlock.
@@ -78,13 +83,40 @@ chmod +x ~/.gemini/config/plugins/orchestrator/hooks/orchestrator_guard.py
 * **Mode A — Ephemeral Subagents (`invoke_subagent`)**: Reserved for single-shot Phase 0 `research` scouts (`flash_lite`/`flash`) and isolated atomic tasks (`self`). Bounded same-WP follow-up `send_message` is permitted for active Phase 2 `self` workers (`< 45` active steps); `research` scouts are strictly single-shot and must be killed upon completion.
 * **Zero Polling & Watchdog Spam**: Relies on Antigravity's native reactive wakeup instead of per-turn `schedule(TimerCondition="any")` spam (at most 1 active opt-in watchdog for long-running external/MCP tasks).
 
-### 4. Phase 0.5 Mandatory Post-Recon "Grill-Me" Alignment & Shared Scratch
-* Immediately after Phase 0 recon, the Main Session interviews the user via `ask_question` (one question at a time, recommended option first) before `@planner` drafts `implementation_plan.md`.
-* Large payloads are staged in `<artifactDirectoryPath>/scratch/` (`MAX_SUBAGENT_PROMPT_CHARS = 3500`, `MAX_RETURN_MESSAGE_CHARS = 2500`).
+### 4. Phase 0.5 Mode Selector, Brainstorming & Shared Scratch
+* Immediately after Phase 0 recon, the Main Session presents a 2–4 bullet recap and invokes `ask_question` with a 3-mode selector (`Standard grill-me`, `No grilling needed`, `Brainstorming`) before `@planner` drafts `implementation_plan.md`; Brainstorming sessions distill into `<artifactDirectoryPath>/scratch/brainstorm_notes.md`.
+* Phase 2 workers read only their assigned `<parentArtifactDirectoryPath>/kanban/WP-XX_<slug>.md` card, while large payloads are staged in `<artifactDirectoryPath>/scratch/` (`MAX_SUBAGENT_PROMPT_CHARS = 3500`, `MAX_RETURN_MESSAGE_CHARS = 2500`).
 
 ---
 
-## 📊 The Three-Family Fleet Matrix (`v1.2`)
+## 🔄 End-to-End Cognitive Workflow (`v1.3.0`)
+
+```mermaid
+flowchart TD
+    P0["Phase 0: Recon (Research Scouts - flash_lite / flash)"]
+    P05["Phase 0.5: 2-4 Bullet Recap & ask_question Mode Selector"]
+    BS["Brainstorming -> scratch/brainstorm_notes.md"]
+    P1A["Stage 1A: @planner (Neon) writes implementation_plan.md"]
+    GATE{"Human Approval Gate"}
+    P1B["Stage 1B: Wake @planner -> kanban/board.md & WP-XX cards"]
+    P2["Phase 2: Execution (Mode C Swarm / Mode B Workflow / Mode A Subagent)"]
+    ESC["Escalation Gate: @councillor Tier-1 (Neon) -> Tier-2 (Carbon)"]
+
+    P0 --> P05
+    P05 -->|"Standard grill-me / No grilling"| P1A
+    P05 -->|"Brainstorming"| BS
+    BS --> P1A
+    P1A --> GATE
+    GATE -->|"Revisions requested"| P1A
+    GATE -->|"Approved"| P1B
+    P1B -->|"Main reads board.md; workers read WP-XX"| P2
+    P2 -.->|"Stuck / >= 2 retries"| ESC
+    ESC -.->|"Strategy"| P2
+```
+
+---
+
+## 📊 The Three-Family Fleet Matrix (`v1.3.0`)
 
 | Family | Thinking / Variant | Exact Model ID / Subagent Alias | Primary Cognitive Role | Typical Workloads & Target |
 | :--- | :--- | :--- | :--- | :--- |
@@ -108,17 +140,17 @@ orchestrator/                           # Root edition (Windows-ready default: `
 ├── LICENSE                             # MIT License
 ├── hooks.json                          # PreToolUse guard hook registration (`python -B`)
 ├── hooks/
-│   └── orchestrator_guard.py           # Pure-dispatcher, swarm, & subagent boundary guard (v1.2.0)
-├── plugin.json                         # Plugin manifest (v1.2.0)
+│   └── orchestrator_guard.py           # Pure-dispatcher, swarm, & subagent boundary guard (v1.3.0)
+├── plugin.json                         # Plugin manifest (v1.3.0)
 ├── README.md                           # Architecture and reference guide
 ├── rules/
-│   └── AGENTS.md                       # Mandatory global orchestrator rule (v1.2)
+│   └── AGENTS.md                       # Mandatory global orchestrator rule (v1.3.0)
 ├── skills/
 │   └── token-efficient-orchestrator/
 │       └── SKILL.md                    # Full Three-Family routing matrix & operational templates
 ├── tests/
 │   ├── __init__.py
-│   └── test_orchestrator_guard.py      # Automated unit & regression test suite (46 tests)
+│   └── test_orchestrator_guard.py      # Automated unit & regression test suite (51 tests)
 ├── windows/                            # Drop-in Windows edition (`python -B`, see windows/README.md)
 │   ├── hooks.json
 │   ├── plugin.json
@@ -139,12 +171,12 @@ orchestrator/                           # Root edition (Windows-ready default: `
 
 ---
 
-## 🛡️ PreToolUse Guard Rules Summary (`orchestrator_guard.py` v1.2.0)
+## 🛡️ PreToolUse Guard Rules Summary (`orchestrator_guard.py` v1.3.0)
 
 | Session Type | Tool / Condition | Decision | Behavior / Reason |
 | :--- | :--- | :--- | :--- |
 | **Main Session** | `run_command`, `search_web`, `mcp_*`, `call_mcp_tool` | **`deny`** | Pure Dispatcher boundary enforcement. |
-| **Main Session** | `read_file` / `write_file` / `edit_file` | **`allow` (scoped)** | Reads: `<artifactDir>/` & skill/plugin configs. Writes: strictly `<artifactDir>/scratch/`. Direct `implementation_plan.md` writes denied. |
+| **Main Session** | `read_file` / `write_file` / `edit_file` | **`allow` (scoped)** | Reads: `<artifactDir>/` (incl. `kanban/board.md`) & skill/plugin configs. Writes: strictly `<artifactDir>/scratch/`. Direct `implementation_plan.md` & `kanban/**` writes denied. |
 | **Main Session** | `invoke_subagent` (Prompt > 3,500 chars or Phase 0 with `self`) | **`deny`** | Anti-bloat cap (`MAX_SUBAGENT_PROMPT_CHARS = 3500`) & strict `TypeName="research"` for recon. |
 | **Main Session** | `invoke_subagent` (`retry_streak >= 2` after escalation/CB/retry cues) | **`deny`** | Two-Tier Escalation Gate: consult `@councillor` (Neon → Carbon) or `ask_question`. |
 | **Main Session** | `send_message` to `research` or `>= 45` active steps | **`deny`** | `research` scouts are single-shot; `self` workers allow bounded follow-up `< 45` active steps (excluding `read_board`, `swarm_wait`). |
@@ -152,7 +184,8 @@ orchestrator/                           # Root edition (Windows-ready default: `
 | **Subagent / Swarm** | `ask_question` | **`deny`** | Enforces bubble-up to Main Session with `STATUS: CLARIFICATION_NEEDED`. |
 | **Subagent / Swarm** | `send_message` (> 2,500 chars) | **`deny`** | Anti-bloat cap (`MAX_RETURN_MESSAGE_CHARS = 2500`). Stage large payloads in `scratch/`. |
 | **Subagent / Swarm** | `[MCP_ONLY]` worker calling `run_command` or `WRITE_FILE_TOOLS` | **`deny`** | Enforces direct `call_mcp_tool` execution without shell/file detours. |
-| **Subagent / Swarm** | Read/exec targeting stale `/brain/<other_id>/scratch/` | **`deny`** | Stale-scratch boundary: only own or resolved parent `<parentArtifactDir>` allowed. |
+| **Subagent / Swarm** | Non-`@planner` writing/mutating `implementation_plan.md` or `kanban/**` | **`deny`** | `@planner`-only write lock (file tools & mutating `run_command`); read-only access preserved. |
+| **Subagent / Swarm** | Read/write/exec targeting stale `/brain/<other_id>/{scratch,implementation_plan.md,kanban}/` | **`deny`** | Stale-session boundary: only own or resolved parent `<parentArtifactDir>` allowed (all roles incl. `@planner`). |
 | **Ephemeral `invoke_subagent`** | `>= 25` steps / `420s` active (RO) or `>= 45` steps / `600s` active (RW) | **`deny` (CB)** | Excludes `429 RESOURCE_EXHAUSTED` gaps. Must immediately call `send_message` (`STATUS: COMPLETED` / `ESCALATE_REQUIRED`). |
 | **Persistent Swarm** | `>= 35` steps (RO `@councillor`/RO `@auditor`) or `>= 60` steps (RW) per wakeup | **`deny` (CB)** | Exempt from global wall-clock timeout; counters reset on every wakeup. Must call `post_message` + `swarm_wait`. |
 | **CB Exempt Tools** | `send_message`, `read_board`, `swarm_wait`, `post_message`, `manage_subagents`, `schedule` | **`allow`** | All 6 `CIRCUIT_BREAKER_EXEMPT_TOOLS` remain permitted during CB hand-off. |

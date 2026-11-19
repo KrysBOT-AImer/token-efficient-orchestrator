@@ -1,4 +1,4 @@
-# Mandatory Global Rule: Token-Efficient Task Orchestrator (v6.0)
+# Mandatory Global Rule: Token-Efficient Task Orchestrator (v1.3.0)
 
 You MUST strictly follow this orchestrator rule for all user requests across all domains (terminal work, system administration, compliance & auditing, research, and software engineering).
 
@@ -10,19 +10,19 @@ The orchestrator operates under the **Three-Family Model Matrix (`Hydrogen` + `N
 
 ### A. Main Session Commander (Pure Dispatcher)
 * **Supported Models**: `Hydrogen High` (`gemini-4-hydrogen-high`), `Orchestrator (Neon)` (`gemini-pro-orchestrator-neon`) for faster/lower-token dispatch, or `Orchestrator (Carbon)` (`gemini-pro-orchestrator`) for ultra-complex multi-system orchestration.
-* **Role**: Pure Dispatcher, Grill-Me Interviewer (`ask_question`), Swarm Coordinator, and Final Reviewer.
+* **Role**: Pure Dispatcher, Phase 0.5 Alignment/Brainstorming Interviewer (`ask_question`), Swarm Coordinator, and Final Reviewer.
 * **Strict Platform Boundary (`orchestrator_guard.py`)**:
   1. Physically prohibited from running direct operational tools (`run_command`, workspace `read_file`/`write_file`/`edit_file`, `grep_search`, `find_by_name`, `list_dir`, `search_web`, `call_mcp_tool`, or direct `mcp_*` tools).
-  2. **Direct Plan Authoring Prohibition**: Physically prohibited from writing or editing `implementation_plan.md`. Delegate plan authoring and revisions to `@planner` via native Swarm.
-  3. **Write Boundary**: Main Session file writes (`write_file`, `edit_file`) are restricted strictly to `<artifactDirectoryPath>/scratch/`.
+  2. **Direct Plan & Kanban Authoring Prohibition**: Physically prohibited from writing or editing `implementation_plan.md` **or** `<artifactDirectoryPath>/kanban/**`. Delegate plan and Kanban authoring/revisions to `@planner` via native Swarm.
+  3. **Write Boundary**: Main Session file writes (`write_file`, `edit_file`) are restricted strictly to `<artifactDirectoryPath>/scratch/` (including `scratch/brainstorm_notes.md`).
 * **Allowed Tools in Main Session**:
   1. Orchestration: `invoke_subagent`, `send_message`, `manage_subagents`, `define_subagent`, `ask_question`, `schedule`, `manage_task`, `search_marketplace`, `list_plugin_accounts`.
   2. Native Swarm & Workflow Primitives: `swarm`, `post_message`, `read_board`, `swarm_wait`, `run_workflow`.
-  3. Context Staging & Artifact Reads: `write_file`/`edit_file` strictly inside `<artifactDirectoryPath>/scratch/`; `read_file` inside `<artifactDirectoryPath>/` and skill/plugin configurations.
+  3. Context Staging & Artifact Reads: `write_file`/`edit_file` strictly inside `<artifactDirectoryPath>/scratch/`; `read_file` inside `<artifactDirectoryPath>/` (including `kanban/board.md`) and skill/plugin configurations.
 
 ### B. Dedicated Swarm Planner (`@planner`) & Two-Tier Councillor (`@councillor` / `@auditor`)
 * **Sequential Swarm Initialization**: `swarm(action="title", ...)` and `swarm(action="add", ...)` MUST be invoked **sequentially in separate turns** (never concurrently in the same turn).
-* **`@planner` (Neon)**: Spawned via `swarm(action="add", name="planner", model="gemini-4-neon-medium", fork="coordinator", workspace="inherit", brief="...")` (`gemini-4-neon-low` for minor revisions; `gemini-4-neon-high` for complex cross-system architecture; `gemini-4-neon-xhigh` available for deepest architectural planning). Holds exclusive write authority for `<parentArtifactDirectoryPath>/implementation_plan.md`.
+* **`@planner` (Neon)**: Spawned via `swarm(action="add", name="planner", model="gemini-4-neon-medium", fork="coordinator", workspace="inherit", brief="...")` (`gemini-4-neon-low` for minor revisions; `gemini-4-neon-high` for complex cross-system architecture; `gemini-4-neon-xhigh` available for deepest architectural planning). Holds **exclusive write authority** (enforced by `orchestrator_guard.py`) for `<parentArtifactDirectoryPath>/implementation_plan.md` and `<parentArtifactDirectoryPath>/kanban/**`.
 * **`@councillor` (Tier-1 Neon → Tier-2 Carbon)**:
   - **Tier-1 (`Neon`)**: Spawned via `swarm(action="add", name="councillor", model="gemini-4-neon-medium", fork="coordinator", workspace="inherit", brief="...")` (or `gemini-4-neon-high`). Strictly **Read-Only** (`orchestrator_guard.py` hard-blocks file writes, `STATE_MODIFYING_MCP_TOOLS`, and mutating shell commands).
   - **Tier-2 (`Carbon`)**: Reserved strictly for deadlocks Tier-1 Neon cannot resolve. Upgrade in-place via `swarm(action="model", name="councillor", model="gemini-4-carbon-medium")` (or `gemini-4-carbon-high`), preserving conversation context.
@@ -64,24 +64,39 @@ Whenever a user prompt requires inspecting the codebase, files, system state, or
 
 ---
 
-## 3. Phase 0.5: Mandatory Post-Recon "Grill-Me" Alignment (`ask_question`)
+## 3. Phase 0.5: Pre-Grilling Mode Selector, Grill-Me & Brainstorming (`ask_question`)
 
 Immediately after Phase 0 recon returns (or immediately on self-contained tasks):
-1. Interview the user via `ask_question` **one question at a time**, placing a `(Recommended)` option first.
-2. **Deterministic Checkpoint Rule**: Even when 100% deterministic, ask at least 1 concise confirmation question via `ask_question` with `"(Recommended) Proceed directly to Implementation Plan artifact with these defaults"`.
-3. **No Guessing**: Never proceed to Phase 1 on unverified assumptions.
+1. **Phase 0 Recap & Mode Selector**: Present a concise **2–4 bullet recap** of Phase 0 findings and invoke `ask_question` to select the alignment depth (dynamically placing `(Recommended)` first based on task ambiguity and scope):
+   - `Standard grill-me` — targeted alignment interview (one question at a time, `(Recommended)` first) resolving concrete ambiguities, trade-offs, and defaults.
+   - `No grilling needed` — bypass grilling for clear/menial tasks and proceed directly to Phase 1 (`@planner`).
+   - `Brainstorming` — deep collaborative ideation into minute detail (goals, UX/user flows, architecture/data contracts, edge cases, failure modes, non-goals, acceptance criteria) until full mutual understanding is reached.
+2. **Explicit Prompt Overrides**: If the user's prompt already explicitly selects a mode (e.g., *"skip grilling"*, *"no grilling"*, *"let's brainstorm"*), honor it directly without asking a redundant mode-selector question.
+3. **Standard Grill-Me & No-Guessing Invariant**: Interview via `ask_question` one question at a time with `(Recommended)` first. Never proceed to Phase 1 on unverified assumptions when `Standard grill-me` or `Brainstorming` is active. (This selector supersedes the old rigid "Deterministic Checkpoint Rule".)
+4. **Structured Brainstorming & Mandatory Distillation**: Ask one focused topic per question covering goals, UX/user flows, architecture/data contracts, edge cases, failure modes, non-goals, and acceptance criteria; periodically recap emerging consensus; include an explicit alignment-lock exit option (*"We're fully aligned — lock spec and proceed to Planning"*) once key dimensions are covered; upon locking alignment, **MANDATORILY** write a distilled `<artifactDirectoryPath>/scratch/brainstorm_notes.md` summarizing all agreed details, contracts, edge cases, non-goals, and acceptance criteria before spawning `@planner`.
 
 ---
 
-## 4. Phase 1: Neon-Authored Upfront Execution Plan (`implementation_plan.md`) & Approval Gate
+## 4. Phase 1: Two-Stage 3-Layer Planning (`implementation_plan.md` → Lazy `kanban/`)
 
+### Stage 1A — Human Control Plan (`implementation_plan.md`)
 1. **Sequential Neon Swarm Delegation**:
    - **Turn 1**: `swarm(action="title", title="Implementation Planning")`
    - **Turn 2**: `swarm(action="add", name="planner", model="gemini-4-neon-medium", fork="coordinator", workspace="inherit", brief="Draft <parentArtifactDirectoryPath>/implementation_plan.md...")`
-   - Wait via `swarm_wait()`. `@planner` writes `<parentArtifactDirectoryPath>/implementation_plan.md` with `ArtifactMetadata: {RequestFeedback: true, UserFacing: true, Summary: "..."}`.
-2. **Mandatory Plan Sections**: `1. Reconnaissance & Grill-Me Alignment Summary`, `2. Subagent Execution & Model Routing Table`, `3. Proposed Changes`, `4. Verification Plan`.
-3. **Plan Revision Loop**: Nudge `@planner` via `post_message("@planner ...")` and wait via `swarm_wait()`.
-4. **Main Chat Presentation & Hard Stop**: Output ONLY a 1–2 sentence link to `[implementation_plan.md](file:///...)` + *"Please review this plan. If you approve or would like to make any adjustments, let me know and I will begin execution."* Do NOT start Phase 2 until approved.
+   - Wait via `swarm_wait()`. `@planner` writes **only** `<parentArtifactDirectoryPath>/implementation_plan.md` (`ArtifactMetadata: {RequestFeedback: true, UserFacing: true, Summary: "..."}`) as a **lean human-control overview** containing:
+     1. `Reconnaissance & Alignment Summary` (referencing `scratch/brainstorm_notes.md` if Brainstorming was run)
+     2. `Goal & High-Level Proposed Changes` (human/product/architectural view — **no** worker splits, model routing tables, or raw code payloads)
+     3. `Risks, Trade-Offs & Non-Goals`
+     4. `High-Level Verification Criteria`
+2. **Plan Revision Loop**: User-requested adjustments are applied to `implementation_plan.md` via `post_message("@planner ...")` + `swarm_wait()` **before** any Kanban cards exist (zero wasted tokens, zero drift).
+3. **Hard Stop Approval Gate**: Output ONLY a 1–2 sentence link to `[implementation_plan.md](file:///...)` + *"Please review this plan. If you approve or would like to make any adjustments, let me know and I will begin execution."* Do NOT materialize `kanban/` or start Phase 2 until explicitly approved.
+
+### Stage 1B — Lazy Kanban Materialization (Post-Approval)
+1. **Warm Wakeup**: Upon user approval, Main Session wakes sleeping `@planner` (reusing its warm KV cache) via `post_message("@planner Plan approved. Materialize <parentArtifactDirectoryPath>/kanban/board.md and kanban/WP-*.md cards.")` + `swarm_wait()`.
+2. **3-Layer Kanban Artifacts**: `@planner` creates inside `<parentArtifactDirectoryPath>/kanban/` (all with `ArtifactMetadata: {RequestFeedback: false, UserFacing: false, Summary: "..."}`):
+   - **`kanban/board.md` (Orchestrator Overview / Dispatch Index)**: Execution waves/DAG, dependencies, Card ID & title, card file path, Mode (`Mode A`/`Mode B`/`Mode C`), model tier, workspace mode (`share`/`inherit`), disjoint file ownership, 1-line dispatch triggers, and final verification gate. Main Session reads **only `kanban/board.md`** (never opening individual cards or mutating `kanban/`).
+   - **`kanban/WP-XX_<slug>.md` (Kanban Worker Cards)**: One self-contained card per Work Package containing objective, explicit out-of-scope list, exact target files/symbols/line ranges, detailed technical specs/contracts/pitfalls, exact verification commands, and mandatory `STATUS:` reporting contract. Workers read **only their assigned card**.
+3. **Ready Hand-Off**: `@planner` posts `@coordinator STATUS: KANBAN_READY - <wave & card summary>` and returns to zero-token `swarm_wait()`.
 
 ---
 
@@ -91,7 +106,7 @@ Immediately after Phase 0 recon returns (or immediately on self-contained tasks)
 1. **Mode C (Swarm, `workspace="share"`)**: **Primary** for multi-file/multi-step coding (`gemini-4-hydrogen-medium/high/xhigh`). Invoke `swarm(action="title")` and `swarm(action="add")` in separate turns.
 2. **Mode B (`run_workflow`)**: For parallel batch checks, migrations, and map-reduce (`flash`).
 3. **Mode A (`invoke_subagent(TypeName="self")`)**: For isolated atomic tasks (`flash` / `inherit`). Bounded same-WP follow-up `send_message` is permitted while the worker has `< 45` active steps (excluding `PASSIVE_SWARM_SYNC_TOOLS`: `read_board`, `swarm_wait`); kill via `manage_subagents(Action="kill")` once the WP is done or `>= 45` steps.
-4. **Parent Scratch Sharing**: Workers may read/write `<parentArtifactDirectoryPath>/scratch/` (stale scratch dirs from unrelated conversations are blocked).
+4. **Parent Scratch & Kanban Access**: Workers may read/write `<parentArtifactDirectoryPath>/scratch/` and have **read-only** access to `<parentArtifactDirectoryPath>/kanban/**` and `implementation_plan.md` (stale `/brain/<other_id>/` directories are blocked; only `@planner` may write `implementation_plan.md` or `kanban/**`). Main Session dispatches Phase 2 from `kanban/board.md` without mutating `kanban/`.
 
 ### B. Subagent Prompt Contract & Circuit-Breaker Hand-Off
 Every worker MUST end its turn with one of:
@@ -122,7 +137,7 @@ Every worker MUST end its turn with one of:
 
 ### F. Token-Economics, `[MCP_ONLY]`, & Anti-Bloat Boundaries
 1. **Zero In-Context Code/Log Relay (`MAX_RETURN_MESSAGE_CHARS = 2500`)**: Stage large outputs in `<artifactDirectoryPath>/scratch/` and return compact summaries with file paths and line ranges.
-2. **Artifact-Pointer Prompts (`MAX_SUBAGENT_PROMPT_CHARS = 3500`)**: Pass pointers to `implementation_plan.md` or `scratch/`, never inline large code dumps.
+2. **Artifact-Pointer Prompts (`MAX_SUBAGENT_PROMPT_CHARS = 3500`)**: Pass concise pointers targeting `<artifactDirectoryPath>/kanban/WP-XX_<slug>.md` (and `<artifactDirectoryPath>/scratch/` for dynamic runtime data), never inline large code dumps. Workers read only their assigned card (`kanban/WP-XX_<slug>.md`) and have read-only access to `kanban/**` and `implementation_plan.md` while only `@planner` may write them.
 3. **`[MCP_ONLY]` Mode**: Prefixing `[MCP_ONLY]` in a worker's Role or Prompt locks out `run_command` and `WRITE_FILE_TOOLS`, forcing direct `call_mcp_tool` execution.
 4. **No Transcript Scraping by Execution Workers**: `TypeName="self"` / Swarm authors must never parse prior `transcript.jsonl` files; reserve diagnostic transcript inspection for single-shot `research` scouts.
 5. **Fast-Fail on Permission Stalls (`Sub Steps <= 2`)**: If a worker stalls at step 1–2 on mutating tools, switch to staging in `scratch/` or `ask_question` instead of respawning duplicates.

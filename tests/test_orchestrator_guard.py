@@ -48,6 +48,7 @@ from hooks.orchestrator_guard import (
     _detect_mcp_only_from_messages_or_first_prompt,
     _get_parent_conversation_id,
     _inspect_parent_escalation_state,
+    _is_planner_role,
     _is_incoming_message_envelope,
     _is_valid_parent_artifact_access,
     _read_stdin_nonblocking,
@@ -350,6 +351,11 @@ class TestIsSubagentSessionAndTranscripts(unittest.TestCase):
                 "You are @planner. Everything before this turn is @coordinator's conversation.",
             ),
             (
+                "assignment_for_planner",
+                f"[swarm] new board message #3 sender={parent_id}\n"
+                "You have just started. Your assignment (recorded on the board as #3 for @planner): Draft kanban.",
+            ),
+            (
                 "assignment_only",
                 f"[swarm] new board message #2 sender={parent_id}\n"
                 "You have just started. Your assignment (recorded on the board as #2): Revise plan.",
@@ -396,20 +402,73 @@ class TestIsSubagentSessionAndTranscripts(unittest.TestCase):
                 res_read = evaluate_pre_tool_use(payload_read)
                 self.assertEqual(res_read.get("decision"), "allow", f"Failed read_file for {label}: {res_read}")
 
-                payload_write_plan = {
-                    "conversationId": child_id,
-                    "artifactDirectoryPath": child_dir,
-                    "transcriptPath": transcript_path,
-                    "toolCall": {
-                        "name": "write_file",
-                        "args": {
-                            "Path": os.path.join(parent_dir, "implementation_plan.md"),
-                            "Content": "# Implementation Plan\n",
+                # All variants may read parent implementation_plan.md & kanban/board.md
+                for parent_read_rel in ("implementation_plan.md", os.path.join("kanban", "board.md")):
+                    res_parent_read = evaluate_pre_tool_use({
+                        "conversationId": child_id,
+                        "artifactDirectoryPath": child_dir,
+                        "transcriptPath": transcript_path,
+                        "toolCall": {
+                            "name": "read_file",
+                            "args": {"Path": os.path.join(parent_dir, parent_read_rel)},
                         },
-                    },
-                }
-                res_write = evaluate_pre_tool_use(payload_write_plan)
-                self.assertEqual(res_write.get("decision"), "allow", f"Failed parent plan write for {label}: {res_write}")
+                    })
+                    self.assertEqual(
+                        res_parent_read.get("decision"),
+                        "allow",
+                        f"Failed parent read ({parent_read_rel}) for {label}: {res_parent_read}",
+                    )
+
+                for parent_write_rel, content in (
+                    ("implementation_plan.md", "# Implementation Plan\n"),
+                    (os.path.join("kanban", "board.md"), "# Kanban Board\n"),
+                ):
+                    payload_write_plan = {
+                        "conversationId": child_id,
+                        "artifactDirectoryPath": child_dir,
+                        "transcriptPath": transcript_path,
+                        "toolCall": {
+                            "name": "write_file",
+                            "args": {
+                                "Path": os.path.join(parent_dir, parent_write_rel),
+                                "Content": content,
+                            },
+                        },
+                    }
+                    res_write = evaluate_pre_tool_use(payload_write_plan)
+                    if label in ("combined", "identity_only", "assignment_for_planner"):
+                        self.assertEqual(
+                            res_write.get("decision"),
+                            "allow",
+                            f"Failed parent write ({parent_write_rel}) for {label}: {res_write}",
+                        )
+                    else:
+                        self.assertEqual(
+                            res_write.get("decision"),
+                            "deny",
+                            f"Anonymous assignment_only must be denied parent write ({parent_write_rel}): {res_write}",
+                        )
+                        self.assertIn("@planner", res_write.get("reason", ""))
+
+                if label == "assignment_only":
+                    for allowed_path in (
+                        "c:/workspace/app.py",
+                        os.path.join(parent_dir, "scratch", "notes.md"),
+                    ):
+                        res_ok = evaluate_pre_tool_use({
+                            "conversationId": child_id,
+                            "artifactDirectoryPath": child_dir,
+                            "transcriptPath": transcript_path,
+                            "toolCall": {
+                                "name": "write_file",
+                                "args": {"Path": allowed_path, "Content": "ok"},
+                            },
+                        })
+                        self.assertEqual(
+                            res_ok.get("decision"),
+                            "allow",
+                            f"Anonymous assignment_only should write {allowed_path}: {res_ok}",
+                        )
 
     def test_forked_swarm_messages_fallback_with_user_explicit_step_zero(self):
         """Verifies .system_generated/messages/*.json fallback works when transcript starts with USER_EXPLICIT."""
@@ -1055,46 +1114,82 @@ class TestV5OrchestratorFeatures(unittest.TestCase):
                 res = evaluate_pre_tool_use(payload)
                 self.assertEqual(res.get("decision"), "allow", f"Failed allowing parent scratch for {tool_name}: {res}")
 
-        # 2. Access parent implementation_plan.md (e.g. by @planner or worker) -> allowed
-        for tool_name in ["read_file", "write_file"]:
-            with self.subTest(tool=tool_name, target="parent_plan"):
+        # 2. Generic worker reading parent implementation_plan.md & kanban/WP-01_core.md -> allowed; writing -> denied (@planner only)
+        for rel_path in ("implementation_plan.md", "kanban/WP-01_core.md"):
+            with self.subTest(role="worker", tool="read_file", target=rel_path):
                 payload = dict(base_payload)
                 payload["toolCall"] = {
-                    "name": tool_name,
+                    "name": "read_file",
                     "args": {
-                        "Path": f"c:/Users/user/.gemini/antigravity/brain/{parent_id}/implementation_plan.md",
-                        "Content": "# Implementation Plan",
+                        "Path": f"c:/Users/user/.gemini/antigravity/brain/{parent_id}/{rel_path}",
                     },
                 }
                 res = evaluate_pre_tool_use(payload)
-                self.assertEqual(res.get("decision"), "allow", f"Failed allowing parent plan for {tool_name}: {res}")
+                self.assertEqual(res.get("decision"), "allow", f"Failed worker read for {rel_path}: {res}")
 
-        # 3. Access unrelated stale historical conversation scratch/ -> denied with STALE_SCRATCH
-        for tool_name in ["read_file", "write_file"]:
-            with self.subTest(tool=tool_name, target="stale_scratch"):
+            with self.subTest(role="worker", tool="write_file", target=rel_path):
                 payload = dict(base_payload)
                 payload["toolCall"] = {
-                    "name": tool_name,
+                    "name": "write_file",
                     "args": {
-                        "Path": f"c:/Users/user/.gemini/antigravity/brain/{stale_id}/scratch/stale.py",
-                        "Content": "# stale",
+                        "Path": f"c:/Users/user/.gemini/antigravity/brain/{parent_id}/{rel_path}",
+                        "Content": "# Unauthorized Edit",
                     },
                 }
                 res = evaluate_pre_tool_use(payload)
-                self.assertEqual(res.get("decision"), "deny")
-                self.assertIn("stale scratch directories of past conversations is strictly forbidden", res.get("reason", ""))
+                self.assertEqual(res.get("decision"), "deny", f"Worker write to {rel_path} must be denied: {res}")
+                self.assertIn("@planner", res.get("reason", ""))
 
-        # 4. run_command referencing stale scratch -> denied
-        payload_cmd = dict(base_payload)
-        payload_cmd["toolCall"] = {
-            "name": "run_command",
-            "args": {
-                "CommandLine": f"python c:/Users/user/.gemini/antigravity/brain/{stale_id}/scratch/test.py",
-            },
-        }
-        res_cmd = evaluate_pre_tool_use(payload_cmd)
-        self.assertEqual(res_cmd.get("decision"), "deny")
-        self.assertIn("stale scratch directories of past conversations is strictly forbidden", res_cmd.get("reason", ""))
+        # 3. @planner reads/writes/edits parent implementation_plan.md, kanban/board.md, and kanban/WP-01_core.md -> allowed
+        planner_payload = {**base_payload, "_test_swarm_role": "planner"}
+        for rel_path in ("implementation_plan.md", "kanban/board.md", "kanban/WP-01_core.md"):
+            for tool_name, extra_args in (
+                ("read_file", {}),
+                ("write_file", {"Content": "# Planner Artifact"}),
+                ("edit_file", {"Target": "old", "Replacement": "new"}),
+            ):
+                with self.subTest(role="planner", tool=tool_name, target=rel_path):
+                    payload = dict(planner_payload)
+                    payload["toolCall"] = {
+                        "name": tool_name,
+                        "args": {
+                            "Path": f"c:/Users/user/.gemini/antigravity/brain/{parent_id}/{rel_path}",
+                            **extra_args,
+                        },
+                    }
+                    res = evaluate_pre_tool_use(payload)
+                    self.assertEqual(res.get("decision"), "allow", f"Failed @planner {tool_name} on {rel_path}: {res}")
+
+        # 4. Access unrelated stale historical conversation scratch/ & kanban/ -> denied for all roles (including @planner)
+        for role_label, role_base in (("worker", base_payload), ("planner", planner_payload)):
+            for stale_rel in ("scratch/stale.py", "kanban/WP-01.md"):
+                for tool_name in ["read_file", "write_file"]:
+                    with self.subTest(role=role_label, tool=tool_name, target=stale_rel):
+                        payload = dict(role_base)
+                        payload["toolCall"] = {
+                            "name": tool_name,
+                            "args": {
+                                "Path": f"c:/Users/user/.gemini/antigravity/brain/{stale_id}/{stale_rel}",
+                                "Content": "# stale",
+                            },
+                        }
+                        res = evaluate_pre_tool_use(payload)
+                        self.assertEqual(res.get("decision"), "deny")
+                        self.assertIn("stale scratch directories of past conversations is strictly forbidden", res.get("reason", ""))
+
+            for stale_cmd in (
+                f"python c:/Users/user/.gemini/antigravity/brain/{stale_id}/scratch/test.py",
+                f"cat c:/Users/user/.gemini/antigravity/brain/{stale_id}/kanban/WP-01.md",
+            ):
+                with self.subTest(role=role_label, tool="run_command", cmd=stale_cmd):
+                    payload_cmd = dict(role_base)
+                    payload_cmd["toolCall"] = {
+                        "name": "run_command",
+                        "args": {"CommandLine": stale_cmd},
+                    }
+                    res_cmd = evaluate_pre_tool_use(payload_cmd)
+                    self.assertEqual(res_cmd.get("decision"), "deny")
+                    self.assertIn("stale scratch directories of past conversations is strictly forbidden", res_cmd.get("reason", ""))
 
     def test_circuit_breaker_exempts_swarm_wait_and_read_board(self):
         # Subagent at max step budget (45 steps)
@@ -1696,7 +1791,7 @@ class TestGuardHangAndRobustnessFixes(unittest.TestCase):
 
 
 class TestSwarmWakeupAndCircuitBreaker(unittest.TestCase):
-    """Regression suite for v6.0 Swarm wakeup resets, CB hand-off wording, 429 gap subtraction, and WRAP_UP_REGEX."""
+    """Regression suite for v1.3.0 Swarm wakeup resets, CB hand-off wording, 429 gap subtraction, and WRAP_UP_REGEX."""
 
     def setUp(self):
         _PARENT_ID_CACHE.clear()
@@ -2242,7 +2337,7 @@ class TestNeonAndCarbonEscalation(unittest.TestCase):
 
                 res_block = evaluate_pre_tool_use(invoke_payload())
                 self.assertEqual(res_block.get("decision"), "deny")
-                self.assertIn("ORCHESTRATOR ESCALATION GATE (v6.0)", res_block.get("reason", ""))
+                self.assertIn("ORCHESTRATOR ESCALATION GATE (v1.3.0)", res_block.get("reason", ""))
                 self.assertIn("gemini-4-neon-medium", res_block.get("reason", ""))
                 self.assertIn("ask_question", res_block.get("reason", ""))
 
@@ -2816,6 +2911,209 @@ class TestLinuxCompatibilityAndHangAudits(unittest.TestCase):
                     stream.close()
                 except Exception:
                     pass
+
+
+class TestKanbanAndPlannerAuthority(unittest.TestCase):
+    """v1.3.0 tests for kanban/** isolation, Main Session read-only/write-block, and @planner-only write authority."""
+
+    def setUp(self):
+        _PARENT_ID_CACHE.clear()
+        TRANSCRIPT_CACHE.clear()
+
+    def tearDown(self):
+        _PARENT_ID_CACHE.clear()
+        TRANSCRIPT_CACHE.clear()
+
+    def test_is_planner_role_helper(self):
+        self.assertTrue(_is_planner_role("planner"))
+        self.assertTrue(_is_planner_role("@Planner"))
+        self.assertTrue(_is_planner_role("planner-2"))
+        self.assertFalse(_is_planner_role("author"))
+        self.assertFalse(_is_planner_role("planner_extra"))
+        self.assertFalse(_is_planner_role(""))
+        self.assertFalse(_is_planner_role(None))
+
+    def test_main_session_reads_kanban_writes_scratch_and_blocks_kanban_writes(self):
+        conv_id = "11111111-2222-3333-4444-555555555555"
+        other_id = "99999999-0000-1111-2222-333333333333"
+        artifact_dir = f"/home/user/.gemini/antigravity/brain/{conv_id}"
+
+        # 1. Main Session reads kanban/board.md & kanban/WP-01_task.md -> allow
+        for rel in ("kanban/board.md", "kanban/WP-01_task.md"):
+            with self.subTest(action="read", rel=rel):
+                res = evaluate_pre_tool_use({
+                    "_test_is_subagent": False,
+                    "conversationId": conv_id,
+                    "artifactDirectoryPath": artifact_dir,
+                    "toolCall": {"name": "read_file", "args": {"Path": f"{artifact_dir}/{rel}"}},
+                })
+                self.assertEqual(res.get("decision"), "allow", f"Main Session read of {rel} failed: {res}")
+
+        # 2. Main Session writes scratch/brainstorm_notes.md -> allow
+        res_brainstorm = evaluate_pre_tool_use({
+            "_test_is_subagent": False,
+            "conversationId": conv_id,
+            "artifactDirectoryPath": artifact_dir,
+            "toolCall": {
+                "name": "write_file",
+                "args": {
+                    "Path": f"{artifact_dir}/scratch/brainstorm_notes.md",
+                    "Content": "# Brainstorm Notes\n",
+                },
+            },
+        })
+        self.assertEqual(res_brainstorm.get("decision"), "allow", f"Main Session scratch write failed: {res_brainstorm}")
+
+        # 3. Main Session write_file / edit_file to kanban/** -> deny with @planner and v1.3.0
+        for target_path in (
+            f"{artifact_dir}/kanban/board.md",
+            f"{artifact_dir}/kanban/WP-01_task.md",
+            f"/home/user/.gemini/antigravity/brain/{other_id}/kanban/board.md",
+        ):
+            for tool_name, extra in (
+                ("write_file", {"Content": "# Board"}),
+                ("edit_file", {"Target": "old", "Replacement": "new"}),
+            ):
+                with self.subTest(action=tool_name, target=target_path):
+                    res = evaluate_pre_tool_use({
+                        "_test_is_subagent": False,
+                        "conversationId": conv_id,
+                        "artifactDirectoryPath": artifact_dir,
+                        "toolCall": {"name": tool_name, "args": {"Path": target_path, **extra}},
+                    })
+                    self.assertEqual(res.get("decision"), "deny")
+                    reason = res.get("reason", "")
+                    self.assertIn("v1.3.0", reason)
+                    self.assertIn("@planner", reason)
+                    self.assertIn("kanban/", reason)
+
+    def test_planner_and_sharded_planner_write_parent_plan_and_kanban(self):
+        parent_id = "11111111-2222-3333-4444-555555555555"
+        child_id = "66666666-7777-8888-9999-000000000000"
+        parent_brain = f"/home/user/.gemini/antigravity/brain/{parent_id}"
+
+        for role_name in ("planner", "planner-2"):
+            for rel in ("implementation_plan.md", "kanban/board.md", "kanban/WP-01_task.md"):
+                for tool_name, extra in (
+                    ("write_file", {"Content": "# Content"}),
+                    ("edit_file", {"Target": "a", "Replacement": "b"}),
+                ):
+                    with self.subTest(role=role_name, tool=tool_name, rel=rel):
+                        res = evaluate_pre_tool_use({
+                            "_test_is_subagent": True,
+                            "_test_is_swarm_worker": True,
+                            "_test_swarm_role": role_name,
+                            "_test_parent_conv_id": parent_id,
+                            "conversationId": child_id,
+                            "artifactDirectoryPath": f"/home/user/.gemini/antigravity/brain/{child_id}",
+                            "toolCall": {
+                                "name": tool_name,
+                                "args": {"Path": f"{parent_brain}/{rel}", **extra},
+                            },
+                        })
+                        self.assertEqual(res.get("decision"), "allow", f"{role_name} {tool_name} on {rel} failed: {res}")
+
+    def test_non_planner_workers_read_allow_and_write_deny_on_plan_and_kanban(self):
+        parent_id = "11111111-2222-3333-4444-555555555555"
+        child_id = "66666666-7777-8888-9999-000000000000"
+        parent_brain = f"/home/user/.gemini/antigravity/brain/{parent_id}"
+
+        worker_profiles = (
+            ("ephemeral_self", {"_test_is_subagent": True}),
+            ("author", {"_test_is_subagent": True, "_test_is_swarm_worker": True, "_test_swarm_role": "author"}),
+            ("verifier", {"_test_is_subagent": True, "_test_is_swarm_worker": True, "_test_swarm_role": "verifier"}),
+        )
+
+        for label, role_flags in worker_profiles:
+            base = {
+                **role_flags,
+                "_test_parent_conv_id": parent_id,
+                "conversationId": child_id,
+                "artifactDirectoryPath": f"/home/user/.gemini/antigravity/brain/{child_id}",
+            }
+
+            # Read via read_file and read-only cat in run_command -> allow
+            for read_tool, read_args in (
+                ("read_file", {"Path": f"{parent_brain}/kanban/WP-01_task.md"}),
+                ("run_command", {"CommandLine": f"cat {parent_brain}/kanban/WP-01_task.md"}),
+                ("run_command", {"CommandLine": f"grep -n 'Objective' {parent_brain}/kanban/WP-01_task.md"}),
+            ):
+                with self.subTest(worker=label, action="read", tool=read_tool, args=read_args):
+                    res = evaluate_pre_tool_use({**base, "toolCall": {"name": read_tool, "args": read_args}})
+                    self.assertEqual(res.get("decision"), "allow", f"{label} read failed: {res}")
+
+            # Write / edit via file tools -> deny
+            for rel in ("implementation_plan.md", "kanban/board.md", "kanban/WP-01_task.md"):
+                for tool_name, extra in (
+                    ("write_file", {"Content": "# Hack"}),
+                    ("edit_file", {"Target": "old", "Replacement": "new"}),
+                ):
+                    with self.subTest(worker=label, action=tool_name, rel=rel):
+                        res = evaluate_pre_tool_use({
+                            **base,
+                            "toolCall": {"name": tool_name, "args": {"Path": f"{parent_brain}/{rel}", **extra}},
+                        })
+                        self.assertEqual(res.get("decision"), "deny")
+                        self.assertIn("@planner", res.get("reason", ""))
+                        self.assertIn("v1.3.0", res.get("reason", ""))
+
+            # Mutating run_command on parent implementation_plan.md or kanban/** -> deny
+            for bad_cmd in (
+                f"echo x > {parent_brain}/kanban/WP-01_task.md",
+                f"echo x | tee {parent_brain}/kanban/board.md",
+                f"rm {parent_brain}/implementation_plan.md",
+            ):
+                with self.subTest(worker=label, action="mutating_cmd", cmd=bad_cmd):
+                    res = evaluate_pre_tool_use({
+                        **base,
+                        "toolCall": {"name": "run_command", "args": {"CommandLine": bad_cmd}},
+                    })
+                    self.assertEqual(res.get("decision"), "deny", f"{label} should deny '{bad_cmd}': {res}")
+                    self.assertIn("@planner", res.get("reason", ""))
+                    self.assertIn("v1.3.0", res.get("reason", ""))
+
+            # Workspace files (including kanban_helper.py) and parent scratch/ writes -> allow
+            for ok_path in (
+                "/home/user/workspace/kanban_helper.py",
+                f"{parent_brain}/scratch/out.json",
+                f"{parent_brain}/scratch/implementation_plan.md",
+            ):
+                with self.subTest(worker=label, action="allowed_write", path=ok_path):
+                    res = evaluate_pre_tool_use({
+                        **base,
+                        "toolCall": {"name": "write_file", "args": {"Path": ok_path, "Content": "ok"}},
+                    })
+                    self.assertEqual(res.get("decision"), "allow", f"{label} write to {ok_path} falsely denied: {res}")
+
+    def test_stale_cross_session_kanban_denied_for_all_roles(self):
+        parent_id = "11111111-2222-3333-4444-555555555555"
+        child_id = "66666666-7777-8888-9999-000000000000"
+        stale_id = "99999999-0000-1111-2222-333333333333"
+        stale_card = f"/home/user/.gemini/antigravity/brain/{stale_id}/kanban/WP-01.md"
+
+        for role_label, extra in (
+            ("worker", {"_test_is_swarm_worker": True, "_test_swarm_role": "author"}),
+            ("planner", {"_test_is_swarm_worker": True, "_test_swarm_role": "planner"}),
+        ):
+            base = {
+                "_test_is_subagent": True,
+                "_test_parent_conv_id": parent_id,
+                "conversationId": child_id,
+                "artifactDirectoryPath": f"/home/user/.gemini/antigravity/brain/{child_id}",
+                **extra,
+            }
+            for tool_name, tool_args in (
+                ("read_file", {"Path": stale_card}),
+                ("write_file", {"Path": stale_card, "Content": "stale"}),
+                ("run_command", {"CommandLine": f"cat {stale_card}"}),
+            ):
+                with self.subTest(role=role_label, tool=tool_name):
+                    res = evaluate_pre_tool_use({
+                        **base,
+                        "toolCall": {"name": tool_name, "args": tool_args},
+                    })
+                    self.assertEqual(res.get("decision"), "deny")
+                    self.assertIn("stale scratch directories of past conversations is strictly forbidden", res.get("reason", ""))
 
 
 if __name__ == "__main__":

@@ -1,19 +1,19 @@
 ---
 name: token-efficient-orchestrator
 description: >-
-  Orchestrates multi-step tasks with the v6.0 Three-Family Model Matrix: Hydrogen (Low/Medium/High/XHigh)
+  Orchestrates multi-step tasks with the v1.3.0 Three-Family Model Matrix: Hydrogen (Low/Medium/High/XHigh)
   for 80%+ Recon & Execution (Mode B run_workflow + persistent Mode C Swarm), Neon (Low/Medium/High/XHigh)
   for Dedicated Swarm Planner (@planner) & Tier-1 Councillor (@councillor), Carbon (Low/Medium/High) for
   Tier-2 @councillor deadlock escalation & critical security & compliance audits (@auditor), plus
   Orchestrator (Neon)/(Carbon) Main Session Dispatcher.
 ---
 
-# Token-Efficient Task Orchestrator (v6.0 — Three-Family Cognitive Architecture)
+# Token-Efficient Task Orchestrator (v1.3.0 — Three-Family Cognitive Architecture)
 
-This skill governs Antigravity's `v6.0` cognitive orchestration architecture:
-1. **Pillar 1 — Main Session Pure Dispatcher**: Runs on `Hydrogen High` (`gemini-4-hydrogen-high`), `Orchestrator (Neon)` (`gemini-pro-orchestrator-neon`) for faster/lower-token dispatch, or `Orchestrator (Carbon)` (`gemini-pro-orchestrator`) for ultra-complex multi-system orchestration. Direct workspace edits, `run_command`, web search, MCP calls, writes outside `<artifactDirectoryPath>/scratch/`, and direct `implementation_plan.md` authoring are physically blocked by `orchestrator_guard.py`.
+This skill governs Antigravity's `v1.3.0` cognitive orchestration architecture:
+1. **Pillar 1 — Main Session Pure Dispatcher**: Runs on `Hydrogen High` (`gemini-4-hydrogen-high`), `Orchestrator (Neon)` (`gemini-pro-orchestrator-neon`) for faster/lower-token dispatch, or `Orchestrator (Carbon)` (`gemini-pro-orchestrator`) for ultra-complex multi-system orchestration. Direct workspace edits, `run_command`, web search, MCP calls, writes outside `<artifactDirectoryPath>/scratch/`, and direct `implementation_plan.md` or `kanban/` authoring are physically blocked by `orchestrator_guard.py`. Main Session reads `kanban/board.md` (read-only) to dispatch Phase 2.
 2. **Pillar 2 — Dedicated Swarm `@planner` (`Neon`) & Two-Tier `@councillor` (`Neon` → `Carbon`)**:
-   - **`@planner`**: Spawned sequentially (`swarm(action="title")` then `swarm(action="add", name="planner", model="gemini-4-neon-medium", fork="coordinator", workspace="inherit", ...)` in separate turns). Exclusive author of `<parentArtifactDirectoryPath>/implementation_plan.md`.
+   - **`@planner`**: Spawned sequentially (`swarm(action="title")` then `swarm(action="add", name="planner", model="gemini-4-neon-medium", fork="coordinator", workspace="inherit", ...)` in separate turns). Holds exclusive write authority over `<parentArtifactDirectoryPath>/implementation_plan.md` (Stage 1A) and `<parentArtifactDirectoryPath>/kanban/**` (Stage 1B lazy materialization post-approval).
    - **Tier-1 `@councillor` (`Neon`)**: Spawned with `model="gemini-4-neon-medium"`, `fork="coordinator"`, `workspace="inherit"`. Strictly **Read-Only** (enforced by `orchestrator_guard.py`).
    - **Tier-2 `@councillor` (`Carbon`) & `@auditor`**: Upgrade `@councillor` in-place via `swarm(action="model", name="councillor", model="gemini-4-carbon-medium")` (or `high`) ONLY when Neon hits a deadlock; spawn `@auditor` (`gemini-4-carbon-medium/high`) for critical security & compliance audits (RO-enforced when RO-flagged).
 3. **Pillar 3 — 80%+ Hydrogen Execution Fleet (Mode C Primary)**:
@@ -24,7 +24,7 @@ This skill governs Antigravity's `v6.0` cognitive orchestration architecture:
 
 ---
 
-## 1. The Three-Family Model Matrix (`v6.0`)
+## 1. The Three-Family Model Matrix (`v1.3.0`)
 
 | Family | Thinking / Variant | Exact Model ID / Subagent Alias | Primary Cognitive Role | Typical Workloads & Execution Target |
 | :--- | :--- | :--- | :--- | :--- |
@@ -77,14 +77,38 @@ print(results)
 
 ---
 
-## 3. Phase 0.5: Mandatory Post-Recon "Grill-Me" Alignment (`ask_question`)
+## 3. Phase 0.5: Pre-Grilling Mode Selector, Grill-Me & Brainstorming (`ask_question`)
 
-1. Interview the user via `ask_question` **one question at a time** with `(Recommended)` first.
-2. **Deterministic Checkpoint**: Even when 100% clear, ask at least 1 confirmation question offering `"(Recommended) Proceed directly to Implementation Plan artifact with these defaults"`.
+1. **Phase 0 Recap & Mode Selector**: Present a concise **2–4 bullet recap** of Phase 0 recon findings and invoke `ask_question` offering 3 modes (dynamically placing `(Recommended)` first based on task ambiguity and scope):
+   - `Standard grill-me` — targeted alignment interview (one question at a time, `(Recommended)` first) resolving concrete ambiguities, trade-offs, and defaults.
+   - `No grilling needed` — bypass grilling for clear/menial tasks and proceed directly to Phase 1 (`@planner`).
+   - `Brainstorming` — deep collaborative ideation into minute detail until full mutual understanding is reached.
+2. **Explicit Prompt Overrides**: If the user's prompt already explicitly selects a mode (e.g., *"skip grilling"*, *"no grilling"*, *"let's brainstorm"*), honor it directly without asking a redundant mode-selector question.
+3. **Structured Brainstorming Checklist**:
+   - Ask **one focused topic per question** via `ask_question` covering: **Goals**, **UX / User Flows**, **Architecture & Data Contracts**, **Edge Cases**, **Failure Modes**, **Non-Goals**, and **Acceptance Criteria**.
+   - Periodically recap emerging consensus.
+   - Include an explicit alignment-lock exit option (*"We're fully aligned — lock spec and proceed to Planning"*) once key dimensions are covered.
+   - Upon locking alignment, **MANDATORILY** write `<artifactDirectoryPath>/scratch/brainstorm_notes.md` before spawning `@planner`:
+
+```markdown
+# Brainstorm & Alignment Notes
+## 1. Core Goal & Success Criteria
+- ...
+## 2. User Flows / UX & Interfaces
+- ...
+## 3. Architecture & Data Contracts
+- ...
+## 4. Edge Cases & Failure Modes
+- ...
+## 5. Explicit Non-Goals & Constraints
+- ...
+## 6. Acceptance & Verification Criteria
+- ...
+```
 
 ---
 
-## 4. Phase 1: Neon Swarm Bridge (`@planner`) & Artifact-Only Plan
+## 4. Phase 1: Two-Stage Neon `@planner` Bridge (`implementation_plan.md` → Lazy `kanban/`)
 
 Execute `swarm(action="title")` and `swarm(action="add")` in **separate turns**:
 
@@ -94,7 +118,7 @@ swarm(action="title", title="Implementation Planning")
 ```
 
 ```python
-# Turn 2: Add @planner (Neon Medium default; Low for minor edits; High/XHigh for complex/deepest architecture)
+# Turn 2 (Stage 1A — Lean Human Control Plan): Add @planner (Neon Medium default; Low for minor edits; High/XHigh for complex/deepest architecture)
 swarm(
     action="add",
     name="planner",
@@ -102,8 +126,12 @@ swarm(
     fork="coordinator",
     workspace="inherit",
     brief="""You are the dedicated Swarm Architect (@planner).
-Draft <parentArtifactDirectoryPath>/implementation_plan.md using Phase 0 recon & Phase 0.5 choices.
-Include: 1. Recon & Grill-Me Summary, 2. Subagent Execution & Model Routing Table, 3. Proposed Changes, 4. Verification Plan.
+Stage 1A: Draft ONLY <parentArtifactDirectoryPath>/implementation_plan.md using Phase 0 recon & Phase 0.5 choices (read <parentArtifactDirectoryPath>/scratch/brainstorm_notes.md if present).
+Keep it a lean human-control overview with 4 sections:
+1. Reconnaissance & Alignment Summary
+2. Goal & High-Level Proposed Changes (human/product/architectural view — NO worker splits, model routing tables, or raw code payloads)
+3. Risks, Trade-Offs & Non-Goals
+4. High-Level Verification Criteria
 Use ArtifactMetadata: {RequestFeedback: true, UserFacing: true, Summary: '...'}.
 Post '@coordinator STATUS: PLAN_READY - [2-sentence summary]' and sleep via swarm_wait.""",
 )
@@ -112,7 +140,40 @@ Post '@coordinator STATUS: PLAN_READY - [2-sentence summary]' and sleep via swar
 ```python
 # Turn 3: Wait passively (zero token cost)
 swarm_wait(since=0)
-# For revisions: post_message(text="@planner ...") + swarm_wait(since=last_seq)
+# For pre-approval revisions: post_message(text="@planner ...") + swarm_wait(since=last_seq)
+```
+
+```python
+# Post-Approval (Stage 1B — Lazy Kanban Materialization): Wake sleeping @planner (warm KV cache)
+post_message(
+    text="""@planner Plan approved. Materialize <parentArtifactDirectoryPath>/kanban/board.md and <parentArtifactDirectoryPath>/kanban/WP-XX_<slug>.md cards.
+Use ArtifactMetadata: {RequestFeedback: false, UserFacing: false, Summary: '...'} for all kanban/ files.
+Post '@coordinator STATUS: KANBAN_READY - <wave & card summary>' and return to swarm_wait."""
+)
+swarm_wait(since=last_seq)
+```
+
+### Kanban Artifact Schemas (Created by `@planner` in Stage 1B)
+
+**`kanban/board.md` (Orchestrator Overview / Dispatch Index — Main Session reads ONLY this file):**
+```markdown
+# Execution Board
+| Wave | Card ID | Card File | Mode | Model Tier | Workspace | Disjoint Owned Files | 1-Line Dispatch Trigger | Depends On |
+| :--- | :--- | :--- | :--- | :--- | :--- | :--- | :--- | :--- |
+| Wave 1 | WP-01 | `kanban/WP-01_core.md` | Mode C | `gemini-4-hydrogen-medium` | `share` | `src/core.py` | Implement core logic | — |
+## Final Verification Gate
+- [Exact end-to-end verification command(s) after all waves complete]
+```
+
+**`kanban/WP-XX_<slug>.md` (Self-Contained Worker Card — Workers read ONLY their assigned card):**
+```markdown
+# WP-01: <Title>
+- **Objective**: ...
+- **Out of Scope**: ...
+- **Target Files / Symbols**: `path/to/file.py` (`SymbolName`, L10–L80)
+- **Technical Specs, Contracts & Pitfalls**: ...
+- **Verification Command(s)**: `python3 -B -m unittest ...`
+- **Reporting Contract**: End with `STATUS: COMPLETED | CLARIFICATION_NEEDED | ESCALATE_REQUIRED`
 ```
 
 ---
@@ -131,7 +192,7 @@ swarm(
     name="author",
     model="gemini-4-hydrogen-medium",  # or gemini-4-hydrogen-high / xhigh
     workspace="share",
-    brief="""You own Step 1 of <parentArtifactDirectoryPath>/implementation_plan.md.
+    brief="""You own WP-01. Read ONLY <parentArtifactDirectoryPath>/kanban/WP-01_core.md.
 Implement changes and run targeted tests. When ready, post '@verifier Ready for verification.' and sleep with swarm_wait.""",
 )
 swarm(
@@ -139,7 +200,7 @@ swarm(
     name="verifier",
     model="gemini-4-hydrogen-high",
     workspace="inherit",
-    brief="""Wait for @author. Inspect changes and run full verification.
+    brief="""Wait for @author. Inspect changes against <parentArtifactDirectoryPath>/kanban/WP-01_core.md and run full verification.
 Post '@coordinator STATUS: COMPLETED' (or '@author Defects: ...') and sleep with swarm_wait.""",
 )
 ```
@@ -155,7 +216,7 @@ files = ["src/a.py", "src/b.py"]
 schema = {"type": "object", "properties": {"file": {"type": "string"}, "status": {"type": "string"}}, "required": ["file", "status"]}
 
 async def update_file(path):
-    a = agent(prompt=f"Update {path} to v6.0 API and call finish.", schema=schema, role=f"Editor {path}", model="flash")
+    a = agent(prompt=f"Follow <parentArtifactDirectoryPath>/kanban/WP-02_batch.md to update {path} to v1.3.0 API and call finish.", schema=schema, role=f"Editor {path}", model="flash")
     return await a(f"Update {path}", schema)
 
 results = await parallel(files, update_file)
@@ -167,7 +228,7 @@ invoke_subagent(
     TypeName="self",
     Role="Implementation Engineer",
     Model="flash",  # or "inherit"
-    Prompt="""Task: Execute Step X in <artifactDirectoryPath>/implementation_plan.md.
+    Prompt="""Task: Execute WP-03 by reading <artifactDirectoryPath>/kanban/WP-03_atomic.md.
 Constraints: Follow workspace security and zero-trust rules; do not scrape transcript.jsonl.
 Reporting: End by calling send_message with STATUS: COMPLETED, CLARIFICATION_NEEDED, or ESCALATE_REQUIRED.""",
 )
@@ -176,7 +237,7 @@ Reporting: End by calling send_message with STATUS: COMPLETED, CLARIFICATION_NEE
 
 ---
 
-## 6. Guard Rules, Circuit Breakers, & Two-Tier Escalation (`orchestrator_guard.py` v6.0)
+## 6. Guard Rules, Circuit Breakers, & Two-Tier Escalation (`orchestrator_guard.py` v1.3.0)
 
 ### A. Budgets, Wakeup Reset, & Hand-Off
 * **Ephemeral `invoke_subagent`**: `25` steps / `420s` active (RO `research`), `45` steps / `600s` active (RW `self`), excluding `429 RESOURCE_EXHAUSTED` retry gaps.
@@ -207,8 +268,9 @@ swarm_wait(since=last_seq)
 ```
 
 ### C. Special Isolation & Anti-Bloat Rules
-* **Main Session Write Boundary**: Strictly `<artifactDirectoryPath>/scratch/`.
-* **Cross-Session Scratch**: Workers may access `<parentArtifactDirectoryPath>/scratch/`; stale `/brain/<other_id>/` directories are blocked.
+* **Main Session Write & Kanban Boundary**: Writes strictly inside `<artifactDirectoryPath>/scratch/` (including `scratch/brainstorm_notes.md`); direct `implementation_plan.md` and `kanban/**` writes are blocked (`kanban/board.md` is read-only for Main Session).
+* **`@planner`-Only Write Lock**: Only `@planner` may write or mutate `<parentArtifactDirectoryPath>/implementation_plan.md` and `<parentArtifactDirectoryPath>/kanban/**`; all other workers retain read-only access.
+* **Cross-Session Scratch & Kanban Boundary**: Workers may access `<parentArtifactDirectoryPath>/scratch/` (RW) and `<parentArtifactDirectoryPath>/kanban/**` (RO); stale `/brain/<other_id>/` directories (`scratch/`, `implementation_plan.md`, `kanban/**`) are blocked for all roles.
 * **`[MCP_ONLY]` Tag**: Adding `[MCP_ONLY]` to a worker's Role/Prompt blocks `run_command` and `WRITE_FILE_TOOLS`, forcing direct `call_mcp_tool` calls.
 * **Read-Only Hard Blocks**: `research`, `@councillor`, and RO-flagged `@auditor` are blocked from `WRITE_FILE_TOOLS`, mutating `run_command`, and `STATE_MODIFYING_MCP_TOOLS` (including `render_document`, `save_draft`, and mutating mail/draft/folder/event/contact/task/category/rule/oof tools).
 * **Payload Caps**: `MAX_SUBAGENT_PROMPT_CHARS = 3500`, `MAX_RETURN_MESSAGE_CHARS = 2500`.

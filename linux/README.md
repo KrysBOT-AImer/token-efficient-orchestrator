@@ -1,6 +1,6 @@
-# Token-Efficient Task Orchestrator — Linux Edition (v1.2.0)
+# Token-Efficient Task Orchestrator — Linux Edition (v1.3.0)
 
-This directory is a complete, self-contained **Linux** drop-in edition of the **Token-Efficient Task Orchestrator (v1.2 — Three-Family Model Matrix)** plugin for Google Antigravity.
+This directory is a complete, self-contained **Linux** drop-in edition of the **Token-Efficient Task Orchestrator (v1.3.0 — Three-Family Model Matrix)** plugin for Google Antigravity.
 
 > [!CAUTION]
 > **Experimental Software — Use Strictly at Your Own Risk**

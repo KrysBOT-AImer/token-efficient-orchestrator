@@ -1,17 +1,17 @@
 #!/usr/bin/env python3
 """
-Token-Efficient Task Orchestrator v6.0 — PreToolUse Enforcement Guard
+Token-Efficient Task Orchestrator v1.3.0 — PreToolUse Enforcement Guard
 
 Enforces:
 1. Pure-Dispatcher Main Session (Hydrogen High / Orchestrator Neon / Orchestrator Carbon):
    - Prohibits direct execution of terminal commands (run_command), web searches,
      and MCP tool calls in the Main Session.
-   - Restricts file reads in the Main Session to conversation artifacts (<artifactDirectoryPath>/)
-     and skill/plugin definitions, and restricts Main Session file writes strictly to
-     <artifactDirectoryPath>/scratch/.
-   - Prohibits the Main Session from writing or editing implementation_plan.md directly;
-     plan creation and revisions must be delegated to the dedicated Neon @planner
-     worker via native swarm(action='add', name='planner', model='gemini-4-neon-medium', fork='coordinator').
+   - Restricts file reads in the Main Session to conversation artifacts (<artifactDirectoryPath>/,
+     including kanban/board.md) and skill/plugin definitions, and restricts Main Session file
+     writes strictly to <artifactDirectoryPath>/scratch/ (e.g. scratch/brainstorm_notes.md).
+   - Prohibits the Main Session from writing or editing implementation_plan.md or kanban/
+     planning artifacts directly; plan and Kanban card authoring must be delegated to the dedicated
+     Neon @planner worker via native swarm(action='add', name='planner', model='gemini-4-neon-medium', fork='coordinator').
    - Restricts invoke_subagent: Phase 0 / Read-Only reconnaissance subagents MUST use TypeName='research'.
    - Enforces Two-Tier Escalation Gate: blocks repeated invoke_subagent retry loops
      (retry_streak >= 2 after escalation/CB/retry cues) until @councillor (Tier-1 Neon
@@ -32,9 +32,11 @@ Enforces:
      - Resets step counter and turn timer on every new wakeup prompt.
      - Passive swarm synchronization tools ('read_board', 'swarm_wait') and 'send_message'/
        'post_message' are exempted from tripping the circuit breaker so workers can report safely.
-   - Stale-Scratch boundary enforcement: allows subagents and swarm workers to read/write
-     their own scratch/artifacts and their resolved parent coordinator's scratch and
-     implementation_plan.md, while strictly blocking unrelated conversation IDs.
+   - Stale-Scratch & Planner-Authority boundary enforcement: allows subagents and swarm workers
+     to read/write their own scratch/artifacts and read their resolved parent coordinator's
+     scratch, implementation_plan.md, and kanban/ artifacts, while strictly blocking unrelated
+     conversation IDs and restricting writes to implementation_plan.md and kanban/ exclusively
+     to @planner.
    - Hard Read-Only Enforcement for Read-Only (research / Phase 0 / @councillor / RO @auditor):
      - Blocks file write/edit tools.
      - Blocks state-modifying MCP tools.
@@ -62,7 +64,7 @@ ALLOWED_ORCHESTRATION_TOOLS = {
     "manage_task",
     "search_marketplace",
     "list_plugin_accounts",
-    # Native Swarm & Workflow Orchestration tools (v6.0):
+    # Native Swarm & Workflow Orchestration tools (v1.3.0):
     "swarm",
     "post_message",
     "read_board",
@@ -288,6 +290,34 @@ BOARD_ASSIGNMENT_MENTION_REGEX = re.compile(
     r"You have just started\.\s+Your assignment \(recorded on the board[^)]*\):[^\n]*\r?\n\s*@([a-zA-Z0-9_-]+)\b",
     re.IGNORECASE,
 )
+BRAIN_ARTIFACT_PATH_REGEX = re.compile(
+    r"/brain/([^/]+)/(?:scratch(?:/.*)?|implementation_plan\.md|kanban(?:/.*)?)",
+    re.IGNORECASE,
+)
+BRAIN_ARTIFACT_CMD_REGEX = re.compile(
+    r"/brain/([^/\s\"']+)/(?:scratch(?:[/\s\"']|$)|implementation_plan\.md|kanban(?:[/\s\"']|$))",
+    re.IGNORECASE,
+)
+PLANNER_ONLY_ARTIFACT_PATH_REGEX = re.compile(
+    r"/brain/([^/]+)/(?:implementation_plan\.md|kanban(?:/.*)?)$",
+    re.IGNORECASE,
+)
+PLANNER_ONLY_ARTIFACT_CMD_REGEX = re.compile(
+    r"/brain/([^/\s\"']+)/(?:implementation_plan\.md|kanban(?:[/\s\"']|$))",
+    re.IGNORECASE,
+)
+PLANNER_ONLY_CMD_REDIRECT_REGEX = re.compile(
+    r"(?:(?:(?<![0-9])|(?<=1))>{1,2}|\btee\b(?:\s+-[a-zA-Z]+)*)\s*(?:\"[^\"\n]*?|'[^'\n]*?|[^\s;&|'\"]*?)/brain/([^/\s\"']+)/(?:implementation_plan\.md|kanban(?:[/\s\"']|$))",
+    re.IGNORECASE,
+)
+
+
+def _is_planner_role(swarm_role: Optional[str]) -> bool:
+    """Return True iff the normalized swarm role is 'planner' or 'planner-*'."""
+    if not swarm_role or not isinstance(swarm_role, str):
+        return False
+    role_norm = swarm_role.strip().lstrip("@").lower()
+    return role_norm == "planner" or role_norm.startswith("planner-")
 AUDITOR_RO_FLAG_REGEX = re.compile(
     r"(?:\bread[- ]only\b|\bdo\s+not\s+(?:modify|edit|write)\s+(?:any\s+)?files\b|\[read[-_]?only\]|\[ro\])",
     re.IGNORECASE,
@@ -1857,7 +1887,7 @@ def evaluate_pre_tool_use(payload: Dict[str, Any]) -> Dict[str, Any]:
                 ),
             }
 
-        # Block Reading Stale Scratch Directories from Past Conversations
+        # Block Reading Stale Scratch / Plan / Kanban Directories from Past Conversations
         curr_conv_id = payload.get("conversationId")
         if not curr_conv_id and artifact_dir:
             curr_conv_id = _path_basename(artifact_dir)
@@ -1867,10 +1897,14 @@ def evaluate_pre_tool_use(payload: Dict[str, Any]) -> Dict[str, Any]:
             brain_dir = os.path.join(str(payload.get("appDataDir")), "brain")
 
         stale_scratch_detected = False
+        target_path = ""
+        norm_target = ""
+        cmd = ""
+        norm_cmd = ""
         if tool_lower in READ_FILE_TOOLS or tool_lower in WRITE_FILE_TOOLS:
             target_path = extract_target_path(args) or ""
             norm_target = normalize_path(target_path)
-            m = re.search(r"/brain/([^/]+)/(?:scratch(?:/.*)?|implementation_plan\.md)", norm_target, re.IGNORECASE)
+            m = BRAIN_ARTIFACT_PATH_REGEX.search(norm_target)
             if m:
                 matched_id = m.group(1)
                 if not _is_valid_parent_artifact_access(matched_id, curr_conv_id, brain_dir, payload):
@@ -1878,7 +1912,7 @@ def evaluate_pre_tool_use(payload: Dict[str, Any]) -> Dict[str, Any]:
         elif tool_lower == "run_command":
             cmd = str(args.get("CommandLine") or "")
             norm_cmd = cmd.replace("\\", "/")
-            m = re.search(r"/brain/([^/\s\"']+)/(?:scratch(?:[/\s\"']|$)|implementation_plan\.md)", norm_cmd, re.IGNORECASE)
+            m = BRAIN_ARTIFACT_CMD_REGEX.search(norm_cmd)
             if m:
                 matched_id = m.group(1)
                 if not _is_valid_parent_artifact_access(matched_id, curr_conv_id, brain_dir, payload):
@@ -1889,9 +1923,29 @@ def evaluate_pre_tool_use(payload: Dict[str, Any]) -> Dict[str, Any]:
                 "decision": "deny",
                 "reason": (
                     "ORCHESTRATOR GUARD: Reading or executing from stale scratch directories of past conversations is strictly forbidden. "
-                    "Access files directly from the active workspace repository or your current conversation's artifact scratch directory."
+                    "Access files directly from the active workspace repository or your current/parent conversation's scratch, plan, or kanban artifacts."
                 ),
             }
+
+        # Enforce @planner-only write authority on implementation_plan.md and kanban/**
+        swarm_role = profile.get("swarm_role")
+        if not _is_planner_role(swarm_role):
+            planner_only_deny = False
+            if tool_lower in WRITE_FILE_TOOLS and PLANNER_ONLY_ARTIFACT_PATH_REGEX.search(norm_target):
+                planner_only_deny = True
+            elif tool_lower == "run_command" and PLANNER_ONLY_ARTIFACT_CMD_REGEX.search(norm_cmd):
+                if READ_ONLY_CMD_BLOCK_REGEX.search(cmd) or PLANNER_ONLY_CMD_REDIRECT_REGEX.search(norm_cmd):
+                    planner_only_deny = True
+
+            if planner_only_deny:
+                return {
+                    "decision": "deny",
+                    "reason": (
+                        "ORCHESTRATOR GUARD BLOCKED (v1.3.0): Only the dedicated @planner Swarm worker may write or edit "
+                        "implementation_plan.md or kanban/ artifacts. Non-@planner workers have read-only access to the parent plan and Kanban cards; "
+                        "write dynamic outputs to <parentArtifactDirectoryPath>/scratch/ or your own scratch directory instead."
+                    ),
+                }
 
         # Step & Active-Time Circuit Breaker with Graceful Hand-Off
         if is_swarm_worker:
@@ -1974,8 +2028,8 @@ def evaluate_pre_tool_use(payload: Dict[str, Any]) -> Dict[str, Any]:
                 "reason": (
                     f"ORCHESTRATOR GUARD BLOCKED: invoke_subagent Prompt exceeds 3,500 characters ({len(prompt_raw)} chars). "
                     "Do NOT paste large code skeletons, file dumps, or duplicated specs into subagent prompts. "
-                    "Delegate plan specs via @planner to <artifactDirectoryPath>/implementation_plan.md or write scratch notes to "
-                    "<artifactDirectoryPath>/scratch/ and pass a concise file path + line-range pointer."
+                    "Delegate plan specs and worker cards via @planner to <artifactDirectoryPath>/implementation_plan.md and "
+                    "<artifactDirectoryPath>/kanban/WP-*.md (or write scratch notes to <artifactDirectoryPath>/scratch/) and pass a concise file path + line-range pointer."
                 ),
             }
 
@@ -1997,20 +2051,20 @@ def evaluate_pre_tool_use(payload: Dict[str, Any]) -> Dict[str, Any]:
             tier = esc_state.get("councillor_tier")
             if tier == "neon":
                 reason = (
-                    "ORCHESTRATOR ESCALATION GATE (v6.0): Blocked after >= 2 consecutive invoke_subagent retries "
+                    "ORCHESTRATOR ESCALATION GATE (v1.3.0): Blocked after >= 2 consecutive invoke_subagent retries "
                     "following Tier-1 Neon @councillor consultation. Upgrade @councillor in-place to Tier-2 Carbon via "
                     "swarm(action='model', name='councillor', model='gemini-4-carbon-medium') and post_message('@councillor ...') "
                     "+ swarm_wait(), or call ask_question to escalate to the user."
                 )
             elif tier == "carbon":
                 reason = (
-                    "ORCHESTRATOR ESCALATION GATE (v6.0): Blocked after >= 2 consecutive invoke_subagent retries "
+                    "ORCHESTRATOR ESCALATION GATE (v1.3.0): Blocked after >= 2 consecutive invoke_subagent retries "
                     "even after Tier-2 Carbon @councillor consultation. Call ask_question now to align with the user "
                     "before dispatching additional invoke_subagent retries."
                 )
             else:
                 reason = (
-                    "ORCHESTRATOR ESCALATION GATE (v6.0): Blocked after >= 2 consecutive invoke_subagent retries "
+                    "ORCHESTRATOR ESCALATION GATE (v1.3.0): Blocked after >= 2 consecutive invoke_subagent retries "
                     "without resolving the deadlock. Consult Tier-1 @councillor (Neon) first via "
                     "swarm(action='add', name='councillor', model='gemini-4-neon-medium', fork='coordinator', brief='...') "
                     "+ swarm_wait(), or call ask_question. Retries resume once @councillor posts a strategy or ask_question is answered."
@@ -2071,9 +2125,27 @@ def evaluate_pre_tool_use(payload: Dict[str, Any]) -> Dict[str, Any]:
             return {
                 "decision": "deny",
                 "reason": (
-                    "ORCHESTRATOR GUARD BLOCKED (v6.0): Main Session is prohibited from directly writing or editing implementation_plan.md. "
+                    "ORCHESTRATOR GUARD BLOCKED (v1.3.0): Main Session is prohibited from directly writing or editing implementation_plan.md. "
                     "Delegate plan authoring to the dedicated Neon @planner worker via "
                     "swarm(action='add', name='planner', model='gemini-4-neon-medium', fork='coordinator', brief='...') and swarm_wait()."
+                ),
+            }
+
+        is_kanban_target = False
+        if target_path and artifact_dir:
+            kanban_dir = os.path.join(artifact_dir, "kanban")
+            if is_inside_directory(target_path, kanban_dir):
+                is_kanban_target = True
+        if not is_kanban_target and re.search(r"/brain/[^/]+/kanban(?:/|$)", norm_target, re.IGNORECASE):
+            is_kanban_target = True
+
+        if is_kanban_target:
+            return {
+                "decision": "deny",
+                "reason": (
+                    "ORCHESTRATOR GUARD BLOCKED (v1.3.0): Main Session is prohibited from directly writing or editing kanban/ planning artifacts. "
+                    "Delegate Kanban board and worker card authoring to @planner via "
+                    "post_message('@planner ...') or swarm(action='add', name='planner', ...) and swarm_wait()."
                 ),
             }
 
