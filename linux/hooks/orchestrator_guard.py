@@ -1,9 +1,9 @@
 #!/usr/bin/env python3
 """
-Token-Efficient Task Orchestrator v1.3.0 — PreToolUse Enforcement Guard
+Token-Efficient Task Orchestrator v2.0.0 — PreToolUse Enforcement Guard
 
 Enforces:
-1. Pure-Dispatcher Main Session (Hydrogen High / Orchestrator Neon / Orchestrator Carbon):
+1. Pure-Dispatcher Main Session (Gemini 4 Neon Medium default):
    - Prohibits direct execution of terminal commands (run_command), web searches,
      and MCP tool calls in the Main Session.
    - Restricts file reads in the Main Session to conversation artifacts (<artifactDirectoryPath>/,
@@ -11,11 +11,15 @@ Enforces:
      writes strictly to <artifactDirectoryPath>/scratch/ (e.g. scratch/brainstorm_notes.md).
    - Prohibits the Main Session from writing or editing implementation_plan.md or kanban/
      planning artifacts directly; plan and Kanban card authoring must be delegated to the dedicated
-     Neon @planner worker via native swarm(action='add', name='planner', model='gemini-4-neon-medium', fork='coordinator').
+     Neon @planner worker via native swarm(action='add', name='planner', model='gemini-4-neon-high', fork='coordinator')
+     (or 'gemini-4-neon-medium' for single-WP tasks).
+   - Hard-blocks all banned Swarm models unconditionally (Main Session & Swarm workers) on
+     swarm(action='add'|'model'): all xhigh / Extra High modes and all gemini-pro-orchestrator* /
+     Orchestrator (Neon|Carbon) wrappers.
    - Restricts invoke_subagent: Phase 0 / Read-Only reconnaissance subagents MUST use TypeName='research'.
    - Enforces Two-Tier Escalation Gate: blocks repeated invoke_subagent retry loops
      (retry_streak >= 2 after escalation/CB/retry cues) until @councillor (Tier-1 Neon
-     gemini-4-neon-medium/high, or Tier-2 Carbon gemini-4-carbon-medium/high via
+     gemini-4-neon-high, or Tier-2 Carbon gemini-4-carbon-high via
      swarm(action='model')) or ask_question is consulted.
    - Restricts send_message: Anti-recycling guards prevent reusing completed read-only
      subagents or overloaded Phase 2 worker subagents (>= 45 active steps).
@@ -64,7 +68,7 @@ ALLOWED_ORCHESTRATION_TOOLS = {
     "manage_task",
     "search_marketplace",
     "list_plugin_accounts",
-    # Native Swarm & Workflow Orchestration tools (v1.3.0):
+    # Native Swarm & Workflow Orchestration tools (v2.0.0):
     "swarm",
     "post_message",
     "read_board",
@@ -318,6 +322,38 @@ def _is_planner_role(swarm_role: Optional[str]) -> bool:
         return False
     role_norm = swarm_role.strip().lstrip("@").lower()
     return role_norm == "planner" or role_norm.startswith("planner-")
+
+
+BANNED_XHIGH_MODEL_REGEX = re.compile(
+    r"(?:^|[\s\-_/()])(?:xhigh|extra[\s\-_]?high)(?:$|[\s\-_/()])",
+    re.IGNORECASE,
+)
+BANNED_ORCHESTRATOR_WRAPPER_REGEX = re.compile(
+    r"(?:gemini-pro-orchestrator(?:-neon)?|orchestrator\s*\(\s*(?:neon|carbon)\s*\))",
+    re.IGNORECASE,
+)
+
+
+def _check_banned_swarm_model(args: Dict[str, Any]) -> Optional[Dict[str, Any]]:
+    """Block banned xhigh modes and gemini-pro-orchestrator* wrappers on swarm add/model."""
+    action = str(args.get("action") or "").strip().lower()
+    if action not in ("add", "model"):
+        return None
+    model_raw = str(args.get("model") or args.get("Model") or "").strip()
+    if not model_raw:
+        return None
+    if BANNED_XHIGH_MODEL_REGEX.search(model_raw) or BANNED_ORCHESTRATOR_WRAPPER_REGEX.search(model_raw):
+        return {
+            "decision": "deny",
+            "reason": (
+                f"ORCHESTRATOR GUARD BLOCKED (v2.0.0): Model '{model_raw}' is banned for Swarm dispatch. "
+                "All xhigh modes and gemini-pro-orchestrator* / Orchestrator (Neon|Carbon) wrappers are prohibited. "
+                "Use valid standalone models instead: 'gemini-4-neon-medium' or 'gemini-4-neon-high', "
+                "'gemini-4-hydrogen-medium' or 'gemini-4-hydrogen-high', or 'gemini-4-carbon-medium' or 'gemini-4-carbon-high' "
+                "(or omit 'model' to inherit the caller's model)."
+            ),
+        }
+    return None
 AUDITOR_RO_FLAG_REGEX = re.compile(
     r"(?:\bread[- ]only\b|\bdo\s+not\s+(?:modify|edit|write)\s+(?:any\s+)?files\b|\[read[-_]?only\]|\[ro\])",
     re.IGNORECASE,
@@ -1841,6 +1877,12 @@ def evaluate_pre_tool_use(payload: Dict[str, Any]) -> Dict[str, Any]:
         args = {}
 
     artifact_dir = payload.get("artifactDirectoryPath")
+
+    if tool_lower == "swarm":
+        banned_model_res = _check_banned_swarm_model(args)
+        if banned_model_res is not None:
+            return banned_model_res
+
     subagent_active = is_subagent_session(payload)
 
     # =========================================================================
@@ -1941,7 +1983,7 @@ def evaluate_pre_tool_use(payload: Dict[str, Any]) -> Dict[str, Any]:
                 return {
                     "decision": "deny",
                     "reason": (
-                        "ORCHESTRATOR GUARD BLOCKED (v1.3.0): Only the dedicated @planner Swarm worker may write or edit "
+                        "ORCHESTRATOR GUARD BLOCKED (v2.0.0): Only the dedicated @planner Swarm worker may write or edit "
                         "implementation_plan.md or kanban/ artifacts. Non-@planner workers have read-only access to the parent plan and Kanban cards; "
                         "write dynamic outputs to <parentArtifactDirectoryPath>/scratch/ or your own scratch directory instead."
                     ),
@@ -2051,22 +2093,22 @@ def evaluate_pre_tool_use(payload: Dict[str, Any]) -> Dict[str, Any]:
             tier = esc_state.get("councillor_tier")
             if tier == "neon":
                 reason = (
-                    "ORCHESTRATOR ESCALATION GATE (v1.3.0): Blocked after >= 2 consecutive invoke_subagent retries "
+                    "ORCHESTRATOR ESCALATION GATE (v2.0.0): Blocked after >= 2 consecutive invoke_subagent retries "
                     "following Tier-1 Neon @councillor consultation. Upgrade @councillor in-place to Tier-2 Carbon via "
-                    "swarm(action='model', name='councillor', model='gemini-4-carbon-medium') and post_message('@councillor ...') "
+                    "swarm(action='model', name='councillor', model='gemini-4-carbon-high') and post_message('@councillor ...') "
                     "+ swarm_wait(), or call ask_question to escalate to the user."
                 )
             elif tier == "carbon":
                 reason = (
-                    "ORCHESTRATOR ESCALATION GATE (v1.3.0): Blocked after >= 2 consecutive invoke_subagent retries "
+                    "ORCHESTRATOR ESCALATION GATE (v2.0.0): Blocked after >= 2 consecutive invoke_subagent retries "
                     "even after Tier-2 Carbon @councillor consultation. Call ask_question now to align with the user "
                     "before dispatching additional invoke_subagent retries."
                 )
             else:
                 reason = (
-                    "ORCHESTRATOR ESCALATION GATE (v1.3.0): Blocked after >= 2 consecutive invoke_subagent retries "
+                    "ORCHESTRATOR ESCALATION GATE (v2.0.0): Blocked after >= 2 consecutive invoke_subagent retries "
                     "without resolving the deadlock. Consult Tier-1 @councillor (Neon) first via "
-                    "swarm(action='add', name='councillor', model='gemini-4-neon-medium', fork='coordinator', brief='...') "
+                    "swarm(action='add', name='councillor', model='gemini-4-neon-high', fork='coordinator', brief='...') "
                     "+ swarm_wait(), or call ask_question. Retries resume once @councillor posts a strategy or ask_question is answered."
                 )
             return {"decision": "deny", "reason": reason}
@@ -2125,9 +2167,10 @@ def evaluate_pre_tool_use(payload: Dict[str, Any]) -> Dict[str, Any]:
             return {
                 "decision": "deny",
                 "reason": (
-                    "ORCHESTRATOR GUARD BLOCKED (v1.3.0): Main Session is prohibited from directly writing or editing implementation_plan.md. "
+                    "ORCHESTRATOR GUARD BLOCKED (v2.0.0): Main Session is prohibited from directly writing or editing implementation_plan.md. "
                     "Delegate plan authoring to the dedicated Neon @planner worker via "
-                    "swarm(action='add', name='planner', model='gemini-4-neon-medium', fork='coordinator', brief='...') and swarm_wait()."
+                    "swarm(action='add', name='planner', model='gemini-4-neon-high', fork='coordinator', brief='...') "
+                    "(or 'gemini-4-neon-medium' for single-WP tasks) and swarm_wait()."
                 ),
             }
 
@@ -2143,7 +2186,7 @@ def evaluate_pre_tool_use(payload: Dict[str, Any]) -> Dict[str, Any]:
             return {
                 "decision": "deny",
                 "reason": (
-                    "ORCHESTRATOR GUARD BLOCKED (v1.3.0): Main Session is prohibited from directly writing or editing kanban/ planning artifacts. "
+                    "ORCHESTRATOR GUARD BLOCKED (v2.0.0): Main Session is prohibited from directly writing or editing kanban/ planning artifacts. "
                     "Delegate Kanban board and worker card authoring to @planner via "
                     "post_message('@planner ...') or swarm(action='add', name='planner', ...) and swarm_wait()."
                 ),
@@ -2156,8 +2199,8 @@ def evaluate_pre_tool_use(payload: Dict[str, Any]) -> Dict[str, Any]:
                 "The Main Session is a strictly Pure Dispatcher and may only write scratch files inside "
                 f"'{os.path.join(artifact_dir, 'scratch') if artifact_dir else '<artifactDirectoryPath>/scratch/'}'. "
                 "Delegate workspace modifications to persistent Mode C Swarm workers (workspace='share'), Mode B run_workflow, "
-                "or invoke_subagent ('flash'/'flash_lite' for 80%+ routine work, 'gemini-4-neon-medium' for @planner/Tier-1 @councillor, "
-                "'gemini-4-carbon-medium' for Tier-2 @councillor/critical audits)."
+                "or invoke_subagent ('flash'/'flash_lite' for 80%+ routine work, 'gemini-4-neon-high'/'gemini-4-neon-medium' for @planner, "
+                "'gemini-4-neon-high' for Tier-1 @councillor, 'gemini-4-carbon-high' for Tier-2 @councillor/critical audits)."
             ),
         }
 
@@ -2183,10 +2226,10 @@ def evaluate_pre_tool_use(payload: Dict[str, Any]) -> Dict[str, Any]:
             f"[Orchestrator Pure-Dispatcher Guard] Direct execution of '{tool_name}' in the Main Session is prohibited. "
             "The Main Session is a strictly Pure Dispatcher. Delegate reconnaissance, file operations, "
             "terminal commands, and MCP calls to Mode B 'run_workflow', Mode C Swarm workers (workspace='share'), or 'invoke_subagent' "
-            "(Hydrogen 'flash'/'flash_lite' for 80%+ recon/routine work; 'gemini-4-neon-medium' for @planner & Tier-1 @councillor; "
-            "'gemini-4-carbon-medium' for Tier-2 @councillor & critical audits; Main Session runs on 'gemini-4-hydrogen-high', "
-            "'gemini-pro-orchestrator-neon', or 'gemini-pro-orchestrator'), run Phase 0.5 Grill-Me ('ask_question'), "
-            "and delegate planning to Neon @planner via swarm(action='add', name='planner', model='gemini-4-neon-medium', fork='coordinator', brief='...')."
+            "(Hydrogen 'flash'/'flash_lite' for 80%+ recon/routine work; 'gemini-4-neon-high' (multi-WP) / 'gemini-4-neon-medium' (single-WP) for @planner; "
+            "'gemini-4-neon-high' for Tier-1 @councillor; 'gemini-4-carbon-high' for Tier-2 @councillor & critical audits; "
+            "Main Session default runs on standalone 'gemini-4-neon-medium'), run Phase 0.5 Grill-Me ('ask_question'), "
+            "and delegate planning to Neon @planner via swarm(action='add', name='planner', model='gemini-4-neon-high', fork='coordinator', brief='...')."
         ),
     }
 

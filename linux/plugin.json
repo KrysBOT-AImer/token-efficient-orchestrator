@@ -1,9 +1,9 @@
 {
   "name": "orchestrator",
   "displayName": "Token-Efficient Task Orchestrator",
-  "version": "1.3.0",
+  "version": "2.0.0",
   "author": "The Token-Efficient Orchestrator Contributors",
-  "description": "Three-Family Model Matrix (v1.3.0): Phase 0.5 Mode Selector & Brainstorming, Two-Stage 3-Layer Kanban Planning (@planner-exclusive implementation_plan.md & kanban/), Hydrogen (Low/Medium/High/XHigh) for 80%+ Recon & Execution (Mode B run_workflow + persistent Mode C Swarm), Neon (Low/Medium/High/XHigh) for @planner & Tier-1 @councillor, Carbon (Low/Medium/High) for Tier-2 @councillor & @auditor, plus Orchestrator (Neon)/(Carbon) Main Session Dispatcher.",
+  "description": "Three-Family Model Matrix (v2.0.0): Standalone gemini-4-neon-medium Main Session Dispatcher, gemini-4-neon-high @planner & Tier-1 @councillor, Hydrogen (Low/Medium/High) for 80%+ Mode A/B/C Recon, Authors & Verifiers, Carbon (Low/Medium/High) for Tier-2 @councillor & >3-WP/security-gated @auditor, dual-skill Hybrid Role-Aware Split (token-efficient-orchestrator + orchestrator-planner), and unconditional bans on xhigh modes and Orchestrator (Neon)/(Carbon) wrappers.",
   "rules": [
     "rules/AGENTS.md"
   ]

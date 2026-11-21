@@ -2337,8 +2337,8 @@ class TestNeonAndCarbonEscalation(unittest.TestCase):
 
                 res_block = evaluate_pre_tool_use(invoke_payload())
                 self.assertEqual(res_block.get("decision"), "deny")
-                self.assertIn("ORCHESTRATOR ESCALATION GATE (v1.3.0)", res_block.get("reason", ""))
-                self.assertIn("gemini-4-neon-medium", res_block.get("reason", ""))
+                self.assertIn("ORCHESTRATOR ESCALATION GATE (v2.0.0)", res_block.get("reason", ""))
+                self.assertIn("gemini-4-neon-high", res_block.get("reason", ""))
                 self.assertIn("ask_question", res_block.get("reason", ""))
 
                 # Swarm / post_message / ask_question remain allowed during gate block
@@ -2375,7 +2375,7 @@ class TestNeonAndCarbonEscalation(unittest.TestCase):
         res_waiting_neon = evaluate_pre_tool_use(invoke_payload())
         self.assertEqual(res_waiting_neon.get("decision"), "deny")
         self.assertIn("Tier-1 Neon @councillor", res_waiting_neon.get("reason", ""))
-        self.assertIn("gemini-4-carbon-medium", res_waiting_neon.get("reason", ""))
+        self.assertIn("gemini-4-carbon-high", res_waiting_neon.get("reason", ""))
 
         # @councillor posts strategy on board (observed via read_board TOOL_RESPONSE) -> unblocks
         records_flow.append({
@@ -2396,7 +2396,7 @@ class TestNeonAndCarbonEscalation(unittest.TestCase):
         write_records(records_flow)
         res_need_carbon = evaluate_pre_tool_use(invoke_payload())
         self.assertEqual(res_need_carbon.get("decision"), "deny")
-        self.assertIn("swarm(action='model', name='councillor', model='gemini-4-carbon-medium')", res_need_carbon.get("reason", ""))
+        self.assertIn("swarm(action='model', name='councillor', model='gemini-4-carbon-high')", res_need_carbon.get("reason", ""))
 
         # Upgrade @councillor in-place to Tier-2 Carbon via swarm(action="model") + post_message
         records_flow.append({
@@ -2964,7 +2964,7 @@ class TestKanbanAndPlannerAuthority(unittest.TestCase):
         })
         self.assertEqual(res_brainstorm.get("decision"), "allow", f"Main Session scratch write failed: {res_brainstorm}")
 
-        # 3. Main Session write_file / edit_file to kanban/** -> deny with @planner and v1.3.0
+        # 3. Main Session write_file / edit_file to kanban/** -> deny with @planner and v2.0.0
         for target_path in (
             f"{artifact_dir}/kanban/board.md",
             f"{artifact_dir}/kanban/WP-01_task.md",
@@ -2983,7 +2983,7 @@ class TestKanbanAndPlannerAuthority(unittest.TestCase):
                     })
                     self.assertEqual(res.get("decision"), "deny")
                     reason = res.get("reason", "")
-                    self.assertIn("v1.3.0", reason)
+                    self.assertIn("v2.0.0", reason)
                     self.assertIn("@planner", reason)
                     self.assertIn("kanban/", reason)
 
@@ -3055,7 +3055,7 @@ class TestKanbanAndPlannerAuthority(unittest.TestCase):
                         })
                         self.assertEqual(res.get("decision"), "deny")
                         self.assertIn("@planner", res.get("reason", ""))
-                        self.assertIn("v1.3.0", res.get("reason", ""))
+                        self.assertIn("v2.0.0", res.get("reason", ""))
 
             # Mutating run_command on parent implementation_plan.md or kanban/** -> deny
             for bad_cmd in (
@@ -3070,7 +3070,7 @@ class TestKanbanAndPlannerAuthority(unittest.TestCase):
                     })
                     self.assertEqual(res.get("decision"), "deny", f"{label} should deny '{bad_cmd}': {res}")
                     self.assertIn("@planner", res.get("reason", ""))
-                    self.assertIn("v1.3.0", res.get("reason", ""))
+                    self.assertIn("v2.0.0", res.get("reason", ""))
 
             # Workspace files (including kanban_helper.py) and parent scratch/ writes -> allow
             for ok_path in (
@@ -3114,6 +3114,100 @@ class TestKanbanAndPlannerAuthority(unittest.TestCase):
                     })
                     self.assertEqual(res.get("decision"), "deny")
                     self.assertIn("stale scratch directories of past conversations is strictly forbidden", res.get("reason", ""))
+
+
+class TestBannedSwarmModelGuard(unittest.TestCase):
+    """v2.0.0 tests for unconditional PreToolUse hard-blocks on xhigh and gemini-pro-orchestrator* Swarm models."""
+
+    def test_blocks_xhigh_and_orchestrator_models_for_main_and_swarm_workers(self):
+        banned_models = (
+            "gemini-4-hydrogen-xhigh",
+            "gemini-4-neon-xhigh",
+            "gemini-4-carbon-xhigh",
+            "Gemini 4 Hydrogen (XHigh)",
+            "Gemini 4 Neon (XHigh)",
+            "Gemini 4 Neon (Extra High)",
+            "Extra High",
+            "xhigh",
+            "gemini-pro-orchestrator",
+            "gemini-pro-orchestrator-neon",
+            "Orchestrator (Neon)",
+            "Orchestrator (Carbon)",
+        )
+        for is_subagent in (False, True):
+            for action in ("add", "model"):
+                for bad_model in banned_models:
+                    with self.subTest(is_subagent=is_subagent, action=action, model=bad_model):
+                        args = {"action": action, "name": "worker", "model": bad_model}
+                        if action == "add":
+                            args["brief"] = "Implement feature"
+                        res = evaluate_pre_tool_use({
+                            "_test_is_subagent": is_subagent,
+                            "_test_is_swarm_worker": is_subagent,
+                            "_test_swarm_role": "author" if is_subagent else None,
+                            "toolCall": {"name": "swarm", "args": args},
+                        })
+                        self.assertEqual(res.get("decision"), "deny", f"Expected deny for {bad_model}: {res}")
+                        reason = res.get("reason", "")
+                        self.assertIn("ORCHESTRATOR GUARD BLOCKED (v2.0.0)", reason)
+                        self.assertIn(bad_model, reason)
+                        self.assertIn("gemini-4-neon-medium", reason)
+
+    def test_blocks_capitalized_model_arg_key(self):
+        res = evaluate_pre_tool_use({
+            "_test_is_subagent": False,
+            "toolCall": {
+                "name": "swarm",
+                "args": {"action": "add", "name": "planner", "Model": "gemini-4-neon-xhigh", "brief": "Plan"},
+            },
+        })
+        self.assertEqual(res.get("decision"), "deny")
+        self.assertIn("ORCHESTRATOR GUARD BLOCKED (v2.0.0)", res.get("reason", ""))
+
+    def test_allows_valid_models_and_non_model_actions_even_with_banned_words_in_brief_or_title(self):
+        valid_models = (
+            "gemini-4-neon-low",
+            "gemini-4-neon-medium",
+            "gemini-4-neon-high",
+            "gemini-4-hydrogen-low",
+            "gemini-4-hydrogen-medium",
+            "gemini-4-hydrogen-high",
+            "gemini-4-carbon-low",
+            "gemini-4-carbon-medium",
+            "gemini-4-carbon-high",
+            "Gemini 4 Neon (High)",
+            None,
+        )
+        for is_subagent in (False, True):
+            for action in ("add", "model"):
+                for model in valid_models:
+                    with self.subTest(is_subagent=is_subagent, action=action, model=model):
+                        args = {"action": action, "name": "worker"}
+                        if model is not None:
+                            args["model"] = model
+                        if action == "add":
+                            args["brief"] = "Do NOT use xhigh or gemini-pro-orchestrator-neon"
+                        res = evaluate_pre_tool_use({
+                            "_test_is_subagent": is_subagent,
+                            "_test_is_swarm_worker": is_subagent,
+                            "_test_swarm_role": "author" if is_subagent else None,
+                            "toolCall": {"name": "swarm", "args": args},
+                        })
+                        self.assertEqual(res.get("decision"), "allow", f"Expected allow for {model}: {res}")
+
+        for title_args in (
+            {"action": "title", "title": "Orchestrator v2.0.0"},
+            {"action": "title", "title": "Ban gemini-pro-orchestrator and xhigh"},
+            {"action": "status"},
+            {"action": "models", "all": True},
+            {"action": "kill", "name": "worker"},
+        ):
+            with self.subTest(args=title_args):
+                res = evaluate_pre_tool_use({
+                    "_test_is_subagent": False,
+                    "toolCall": {"name": "swarm", "args": title_args},
+                })
+                self.assertEqual(res.get("decision"), "allow", f"Expected allow for {title_args}: {res}")
 
 
 if __name__ == "__main__":

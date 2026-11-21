@@ -1,11 +1,11 @@
-# Token-Efficient Task Orchestrator — Windows Edition (v1.3.0)
+# Token-Efficient Task Orchestrator — Windows Edition (v2.0.0)
 
-This directory is a complete, self-contained **Windows** drop-in edition of the **Token-Efficient Task Orchestrator (v1.3.0 — Three-Family Model Matrix)** plugin for Google Antigravity.
+This directory is a complete, self-contained **Windows** drop-in edition of the **Token-Efficient Task Orchestrator (v2.0.0 — Three-Family Model Matrix)** plugin for Google Antigravity.
 
 > [!CAUTION]
 > **Experimental Software — Use Strictly at Your Own Risk**
 >
-> Review `hooks/orchestrator_guard.py`, `rules/AGENTS.md`, and `skills/token-efficient-orchestrator/SKILL.md` before installing, or have your AI coding agent inspect and adapt them to your environment. See the [root README](../README.md) for the full architecture and guard matrix.
+> Review `hooks/orchestrator_guard.py`, `rules/AGENTS.md`, `skills/token-efficient-orchestrator/SKILL.md`, and `skills/orchestrator-planner/SKILL.md` before installing, or have your AI coding agent inspect and adapt them to your environment. See the [root README](../README.md) for the full architecture and guard matrix.
 
 ---
 
@@ -28,6 +28,8 @@ windows/
 ├── rules/
 │   └── AGENTS.md
 ├── skills/
+│   ├── orchestrator-planner/
+│   │   └── SKILL.md
 │   └── token-efficient-orchestrator/
 │       └── SKILL.md
 └── tests/

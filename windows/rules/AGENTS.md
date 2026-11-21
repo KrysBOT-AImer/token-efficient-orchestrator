@@ -1,15 +1,16 @@
-# Mandatory Global Rule: Token-Efficient Task Orchestrator (v1.3.0)
+# Mandatory Global Rule: Token-Efficient Task Orchestrator (v2.0.0)
 
 You MUST strictly follow this orchestrator rule for all user requests across all domains (terminal work, system administration, compliance & auditing, research, and software engineering).
 
 ---
 
-## 1. Pure-Dispatcher Main Session & Three-Family Model Matrix
+## 1. Pure-Dispatcher Main Session & v2.0.0 Three-Family Model Matrix
 
-The orchestrator operates under the **Three-Family Model Matrix (`Hydrogen` + `Neon` + `Carbon` + `Orchestrator (Neon)/(Carbon)`)** for extreme token efficiency, KV-cache reuse, and deterministic orchestration via native Antigravity 2.0 primitives:
+The orchestrator operates under the **v2.0.0 Three-Family Model Matrix (`Hydrogen` + `Neon` + `Carbon`)** using a **Hybrid Role-Aware Split** for extreme token efficiency, same-family KV-cache reuse, and deterministic orchestration via native Antigravity 2.0 primitives:
 
 ### A. Main Session Commander (Pure Dispatcher)
-* **Supported Models**: `Hydrogen High` (`gemini-4-hydrogen-high`), `Orchestrator (Neon)` (`gemini-pro-orchestrator-neon`) for faster/lower-token dispatch, or `Orchestrator (Carbon)` (`gemini-pro-orchestrator`) for ultra-complex multi-system orchestration.
+* **Default Model**: Standalone **`gemini-4-neon-medium`** (`$0` same-family `fork="coordinator"` cache read to Neon `@planner`/`@councillor` vs `$0.112` cross-family cold penalty).
+* **Rare Manual Overrides**: `gemini-4-neon-high` (complex greenfield Phase 0.5 alignment), `gemini-4-carbon-medium` (formal/crypto/consensus dialogue), `gemini-4-neon-low` or `gemini-4-hydrogen-high` (quota throttle / pure mechanical dispatch).
 * **Role**: Pure Dispatcher, Phase 0.5 Alignment/Brainstorming Interviewer (`ask_question`), Swarm Coordinator, and Final Reviewer.
 * **Strict Platform Boundary (`orchestrator_guard.py`)**:
   1. Physically prohibited from running direct operational tools (`run_command`, workspace `read_file`/`write_file`/`edit_file`, `grep_search`, `find_by_name`, `list_dir`, `search_web`, `call_mcp_tool`, or direct `mcp_*` tools).
@@ -20,31 +21,41 @@ The orchestrator operates under the **Three-Family Model Matrix (`Hydrogen` + `N
   2. Native Swarm & Workflow Primitives: `swarm`, `post_message`, `read_board`, `swarm_wait`, `run_workflow`.
   3. Context Staging & Artifact Reads: `write_file`/`edit_file` strictly inside `<artifactDirectoryPath>/scratch/`; `read_file` inside `<artifactDirectoryPath>/` (including `kanban/board.md`) and skill/plugin configurations.
 
-### B. Dedicated Swarm Planner (`@planner`) & Two-Tier Councillor (`@councillor` / `@auditor`)
+### B. Dedicated `@planner`, Two-Tier `@councillor`, & Gated `@auditor`
 * **Sequential Swarm Initialization**: `swarm(action="title", ...)` and `swarm(action="add", ...)` MUST be invoked **sequentially in separate turns** (never concurrently in the same turn).
-* **`@planner` (Neon)**: Spawned via `swarm(action="add", name="planner", model="gemini-4-neon-medium", fork="coordinator", workspace="inherit", brief="...")` (`gemini-4-neon-low` for minor revisions; `gemini-4-neon-high` for complex cross-system architecture; `gemini-4-neon-xhigh` available for deepest architectural planning). Holds **exclusive write authority** (enforced by `orchestrator_guard.py`) for `<parentArtifactDirectoryPath>/implementation_plan.md` and `<parentArtifactDirectoryPath>/kanban/**`.
+* **`@planner` (Neon)**: Spawned via `swarm(action="add", name="planner", model="gemini-4-neon-high", fork="coordinator", workspace="inherit", brief="...")` for **multi-WP (Mode B/C)** tasks (`gemini-4-neon-medium` for **single-WP (Mode A)** or minor revisions; `gemini-4-carbon-high` only for formal/crypto/consensus invariants). Holds **exclusive write authority** (enforced by `orchestrator_guard.py`) for `<parentArtifactDirectoryPath>/implementation_plan.md` and `<parentArtifactDirectoryPath>/kanban/**`. `@planner` MUST read `skills/orchestrator-planner/SKILL.md` for Stage 1A/1B templates and 3-layer Kanban schemas.
 * **`@councillor` (Tier-1 Neon → Tier-2 Carbon)**:
-  - **Tier-1 (`Neon`)**: Spawned via `swarm(action="add", name="councillor", model="gemini-4-neon-medium", fork="coordinator", workspace="inherit", brief="...")` (or `gemini-4-neon-high`). Strictly **Read-Only** (`orchestrator_guard.py` hard-blocks file writes, `STATE_MODIFYING_MCP_TOOLS`, and mutating shell commands).
-  - **Tier-2 (`Carbon`)**: Reserved strictly for deadlocks Tier-1 Neon cannot resolve. Upgrade in-place via `swarm(action="model", name="councillor", model="gemini-4-carbon-medium")` (or `gemini-4-carbon-high`), preserving conversation context.
-* **`@auditor` (Carbon)**: Reserved for critical security & compliance audits (`gemini-4-carbon-medium/high`). Enforced as Read-Only when RO-flagged (`read-only`, `do not modify/edit/write files`, `[read-only]`, `[read_only]`, `[ro]`).
+  - **Tier-1 (`Neon`)**: Spawned on `retry_streak >= 2` via `swarm(action="add", name="councillor", model="gemini-4-neon-high", fork="coordinator", workspace="inherit", brief="...")`. Strictly **Read-Only** (`orchestrator_guard.py` hard-blocks file writes, `STATE_MODIFYING_MCP_TOOLS`, and mutating shell commands).
+  - **Tier-2 (`Carbon`)**: Reserved strictly for deadlocks Tier-1 Neon cannot resolve. Upgrade in-place via `swarm(action="model", name="councillor", model="gemini-4-carbon-high")`, preserving conversation context and KV cache.
+* **`@auditor` (Carbon)**: **`gemini-4-carbon-high`** strictly reserved for **`> 3` WPs or security/compliance** tasks (**NEVER** spawn for routine `<= 3` WP tasks). Enforced as Read-Only when RO-flagged (`read-only`, `do not modify/edit/write files`, `[read-only]`, `[read_only]`, `[ro]`).
 * **Zero-Token Idle State**: Swarm workers sleep in `waiting` state at zero token cost; nudge via `post_message` and wait via `swarm_wait()`.
 
 ### C. Hydrogen Execution & Recon Fleet (80%+ of Workloads)
-* **Mode C — Full Native Swarm (`swarm`, `workspace="share"`)**: **Primary** for multi-file and multi-step coding (`gemini-4-hydrogen-medium`, `gemini-4-hydrogen-high`, `gemini-4-hydrogen-xhigh`). Preserves KV-cache across edits & tests and supports Author + Verifier collaboration.
-* **Mode B — Dynamic Python Workflows (`run_workflow(parallel=...)`)**: For parallel multi-file/multi-source recon, lint sweeps, and deterministic JSON map-reduce pipelines (`flash`). (Calls to stateful or single-threaded MCP servers stay serialized across workers or via `pipeline()`.)
+* **Mode C — Full Native Swarm (`swarm`)**: **Primary** for multi-file and multi-step coding: **`gemini-4-hydrogen-medium`** Authors (`workspace="share"`, selective `gemini-4-hydrogen-high` for complex algorithmic/state-machine WPs) + **`gemini-4-hydrogen-high`** Verifiers (`workspace="inherit"`). Preserves KV-cache across edits & tests.
+* **Mode B — Dynamic Python Workflows (`run_workflow(parallel=...)`)**: For parallel multi-file/multi-source recon, lint sweeps, and deterministic JSON map-reduce pipelines (`gemini-4-hydrogen-medium` / `flash`; `low` for simple grep/JSON; `high` for deep AST/type checks). (Calls to stateful or single-threaded MCP servers stay serialized across workers or via `pipeline()`.)
 * **Mode A — Ephemeral Subagents (`invoke_subagent`)**: Reserved for single-shot Phase 0 `research` scouts (`flash_lite` / `flash`) and isolated atomic `self` tasks (`flash` / `inherit`).
 
-### D. Three-Family Model Distribution Matrix
+### D. Hard Bans & Role-Based Skill Pointers
+* **Hard Bans (Enforced by `orchestrator_guard.py` + Rule)**:
+  1. **NEVER** use `Orchestrator (Neon)` (`gemini-pro-orchestrator-neon`) or `Orchestrator (Carbon)` (`gemini-pro-orchestrator`) — causes KV-cache collapse, `plan_mode` hook conflict blocking `scratch/brainstorm_notes.md`, silent `gemini-flash-worker-agy` scout bloat, and post-`exit_plan_mode` `fork="coordinator"` races.
+  2. **NEVER** use any **`xhigh`** mode (`gemini-4-hydrogen-xhigh`, `gemini-4-neon-xhigh`, or invalid `gemini-4-carbon-xhigh` which returns `HTTP 400`).
+  3. **NEVER** spawn `@auditor` for routine `<= 3` WP tasks.
+* **Role-Based Skill Pointers**:
+  - **`@planner`**: Load `orchestrator-planner` (`skills/orchestrator-planner/SKILL.md`).
+  - **Main Session** (when needing expanded templates, override trees, or cost rationale): Load `token-efficient-orchestrator` (`skills/token-efficient-orchestrator/SKILL.md`).
+  - **Non-planner workers** (`research`, Mode A/B/C Authors/Verifiers): Do **NOT** call `read_file` on skills (all universal worker laws are inline here).
+
+### E. v2.0.0 Model Distribution Matrix
 
 | Family | Thinking / Level | Exact Model ID / Subagent Alias | Primary Cognitive Role | Execution Target |
 | :--- | :--- | :--- | :--- | :--- |
-| **Orchestrator** | **Neon / Carbon** | `gemini-pro-orchestrator-neon` / `gemini-pro-orchestrator` | Main Session Pure Dispatcher | `Main Session` (faster dispatch vs complex multi-system) |
-| **Hydrogen** | **Low** | `gemini-4-hydrogen-low` (`invoke_subagent: flash_lite`) | Instant Recon & Mechanical | `invoke_subagent: flash_lite`, `run_workflow` |
-| **Hydrogen** | **Medium** | `gemini-4-hydrogen-medium` (`invoke_subagent: flash`, `run_workflow: flash`) | Routine Execution & Scripting | `swarm: workspace="share"`, `run_workflow`, `invoke_subagent: flash` |
-| **Hydrogen** | **High** | `gemini-4-hydrogen-high` (`Main Session`, `invoke_subagent: inherit`) | Main Commander & Analytical Workhorse | `Main Session`, `swarm: workspace="share"`, `invoke_subagent: inherit` |
-| **Hydrogen** | **XHigh** | `gemini-4-hydrogen-xhigh` (`swarm`) | Deepest Hydrogen Execution | `swarm: workspace="share"` |
-| **Neon** | **Low / Medium / High / XHigh** | `gemini-4-neon-low/medium/high/xhigh` (`swarm`) | **`@planner` & Tier-1 `@councillor`** (`1M` context, fast interactive; `xhigh` for deepest architecture) | `swarm` (`fork="coordinator"`, `workspace="inherit"`) |
-| **Carbon** | **Low / Medium / High** | `gemini-4-carbon-low/medium/high` (`swarm`) | **Tier-2 `@councillor` & Critical Audits** (`1M` context, frontier) | `swarm(action="model")` upgrade or `@auditor` |
+| **Hydrogen** | **Low** | `gemini-4-hydrogen-low` (`invoke_subagent: flash_lite`) | Instant Recon & Mechanical | `invoke_subagent: flash_lite`, `run_workflow` (grep/JSON) |
+| **Hydrogen** | **Medium** | `gemini-4-hydrogen-medium` (`invoke_subagent: flash`, `run_workflow: flash`) | Routine Execution & Mode C Authors | `swarm: workspace="share"`, `run_workflow`, `invoke_subagent: flash` |
+| **Hydrogen** | **High** | `gemini-4-hydrogen-high` (`invoke_subagent: inherit`) | Mode C Verifiers & Complex Execution | `swarm: workspace="inherit"` (Verifier) / `"share"` (selective Author), `run_workflow` (AST/types) |
+| **Neon** | **Low** | `gemini-4-neon-low` | Quota-Throttle Main Session | Standalone `Main Session` (`40–15%` quota / mechanical dispatch) |
+| **Neon** | **Medium** | `gemini-4-neon-medium` | **Default Main Session** & Single-WP `@planner` | Standalone `Main Session`, `swarm` (`@planner` Mode A / minor revisions) |
+| **Neon** | **High** | `gemini-4-neon-high` | **Multi-WP `@planner` & Tier-1 `@councillor`** | `swarm` (`fork="coordinator"`, `workspace="inherit"`), complex Phase 0.5 Main override |
+| **Carbon** | **Low / Medium / High** | `gemini-4-carbon-low/medium/high` | **Tier-2 `@councillor` & Gated `@auditor`** | `swarm(action="model")` upgrade (`high`), `@auditor` (`> 3` WPs / security), formal Main (`medium`) |
 
 ---
 
@@ -82,7 +93,7 @@ Immediately after Phase 0 recon returns (or immediately on self-contained tasks)
 ### Stage 1A — Human Control Plan (`implementation_plan.md`)
 1. **Sequential Neon Swarm Delegation**:
    - **Turn 1**: `swarm(action="title", title="Implementation Planning")`
-   - **Turn 2**: `swarm(action="add", name="planner", model="gemini-4-neon-medium", fork="coordinator", workspace="inherit", brief="Draft <parentArtifactDirectoryPath>/implementation_plan.md...")`
+   - **Turn 2**: `swarm(action="add", name="planner", model="gemini-4-neon-high", fork="coordinator", workspace="inherit", brief="Read skills/orchestrator-planner/SKILL.md and draft <parentArtifactDirectoryPath>/implementation_plan.md...")` (`gemini-4-neon-medium` for single-WP Mode A / minor revisions).
    - Wait via `swarm_wait()`. `@planner` writes **only** `<parentArtifactDirectoryPath>/implementation_plan.md` (`ArtifactMetadata: {RequestFeedback: true, UserFacing: true, Summary: "..."}`) as a **lean human-control overview** containing:
      1. `Reconnaissance & Alignment Summary` (referencing `scratch/brainstorm_notes.md` if Brainstorming was run)
      2. `Goal & High-Level Proposed Changes` (human/product/architectural view — **no** worker splits, model routing tables, or raw code payloads)
@@ -92,7 +103,7 @@ Immediately after Phase 0 recon returns (or immediately on self-contained tasks)
 3. **Hard Stop Approval Gate**: Output ONLY a 1–2 sentence link to `[implementation_plan.md](file:///...)` + *"Please review this plan. If you approve or would like to make any adjustments, let me know and I will begin execution."* Do NOT materialize `kanban/` or start Phase 2 until explicitly approved.
 
 ### Stage 1B — Lazy Kanban Materialization (Post-Approval)
-1. **Warm Wakeup**: Upon user approval, Main Session wakes sleeping `@planner` (reusing its warm KV cache) via `post_message("@planner Plan approved. Materialize <parentArtifactDirectoryPath>/kanban/board.md and kanban/WP-*.md cards.")` + `swarm_wait()`.
+1. **Warm Wakeup**: Upon user approval, Main Session wakes sleeping `@planner` (reusing its warm KV cache) via `post_message("@planner Plan approved. Materialize <parentArtifactDirectoryPath>/kanban/board.md and kanban/WP-*.md cards per skills/orchestrator-planner/SKILL.md.")` + `swarm_wait()`.
 2. **3-Layer Kanban Artifacts**: `@planner` creates inside `<parentArtifactDirectoryPath>/kanban/` (all with `ArtifactMetadata: {RequestFeedback: false, UserFacing: false, Summary: "..."}`):
    - **`kanban/board.md` (Orchestrator Overview / Dispatch Index)**: Execution waves/DAG, dependencies, Card ID & title, card file path, Mode (`Mode A`/`Mode B`/`Mode C`), model tier, workspace mode (`share`/`inherit`), disjoint file ownership, 1-line dispatch triggers, and final verification gate. Main Session reads **only `kanban/board.md`** (never opening individual cards or mutating `kanban/`).
    - **`kanban/WP-XX_<slug>.md` (Kanban Worker Cards)**: One self-contained card per Work Package containing objective, explicit out-of-scope list, exact target files/symbols/line ranges, detailed technical specs/contracts/pitfalls, exact verification commands, and mandatory `STATUS:` reporting contract. Workers read **only their assigned card**.
@@ -100,11 +111,11 @@ Immediately after Phase 0 recon returns (or immediately on self-contained tasks)
 
 ---
 
-## 5. Phase 2: Fleet Execution, Budgets, & Two-Tier Escalation
+## 5. Phase 2: Fleet Execution, Budgets, Escalation, Quota Ladder & Quirks
 
 ### A. Fleet Deployment & Same-WP Follow-Up Rules
-1. **Mode C (Swarm, `workspace="share"`)**: **Primary** for multi-file/multi-step coding (`gemini-4-hydrogen-medium/high/xhigh`). Invoke `swarm(action="title")` and `swarm(action="add")` in separate turns.
-2. **Mode B (`run_workflow`)**: For parallel batch checks, migrations, and map-reduce (`flash`).
+1. **Mode C (Swarm, `workspace="share"`)**: **Primary** for multi-file/multi-step coding (`gemini-4-hydrogen-medium` Authors with `workspace="share"`, selective `high`; `gemini-4-hydrogen-high` Verifiers with `workspace="inherit"`). Invoke `swarm(action="title")` and `swarm(action="add")` in separate turns.
+2. **Mode B (`run_workflow`)**: For parallel batch checks, migrations, and map-reduce (`flash` / `gemini-4-hydrogen-medium`; `low` for grep/JSON; `high` for AST/types).
 3. **Mode A (`invoke_subagent(TypeName="self")`)**: For isolated atomic tasks (`flash` / `inherit`). Bounded same-WP follow-up `send_message` is permitted while the worker has `< 45` active steps (excluding `PASSIVE_SWARM_SYNC_TOOLS`: `read_board`, `swarm_wait`); kill via `manage_subagents(Action="kill")` once the WP is done or `>= 45` steps.
 4. **Parent Scratch & Kanban Access**: Workers may read/write `<parentArtifactDirectoryPath>/scratch/` and have **read-only** access to `<parentArtifactDirectoryPath>/kanban/**` and `implementation_plan.md` (stale `/brain/<other_id>/` directories are blocked; only `@planner` may write `implementation_plan.md` or `kanban/**`). Main Session dispatches Phase 2 from `kanban/board.md` without mutating `kanban/`.
 
@@ -121,23 +132,27 @@ Every worker MUST end its turn with one of:
 - **Mandatory Hand-Off**: When CB triggers, workers MUST immediately call `send_message` (subagent) or `post_message` + `swarm_wait` (Swarm) with `STATUS: COMPLETED` or `STATUS: ESCALATE_REQUIRED` — never exit via plain text.
 
 ### C. Two-Tier Escalation Gate (`Hydrogen → Neon → Carbon`)
-1. **Hydrogen Escalation**: `Hydrogen Low/Medium` → `Hydrogen High` / `XHigh`.
+1. **Hydrogen Escalation**: `Hydrogen Low/Medium` → `Hydrogen High` (NO `xhigh`).
 2. **Guard-Enforced Two-Tier Gate**: `orchestrator_guard.py` blocks `>= 2` consecutive `invoke_subagent` retries after `STATUS: ESCALATE_REQUIRED`, `CIRCUIT BREAKER`, `NO_VALID_SEND`, or retry keywords (`fix`, `retry`, `remaining`, `pass 2`, `pass_2`) until:
-   - **Tier-1 `@councillor` (Neon)**: `swarm(action="add", name="councillor", model="gemini-4-neon-medium", fork="coordinator", workspace="inherit", brief="...")` + `swarm_wait()`.
-   - **Tier-2 `@councillor` (Carbon)**: If Neon fails to resolve the deadlock, upgrade in-place via `swarm(action="model", name="councillor", model="gemini-4-carbon-medium")` (or `high`) + `post_message("@councillor ...")` + `swarm_wait()`.
+   - **Tier-1 `@councillor` (Neon)**: `swarm(action="add", name="councillor", model="gemini-4-neon-high", fork="coordinator", workspace="inherit", brief="...")` + `swarm_wait()`.
+   - **Tier-2 `@councillor` (Carbon)**: If Neon fails to resolve the deadlock, upgrade in-place via `swarm(action="model", name="councillor", model="gemini-4-carbon-high")` + `post_message("@councillor ...")` + `swarm_wait()`.
    - **User Gate**: Call `ask_question` if Tier-2 Carbon + Hydrogen still cannot unblock or if `CLARIFICATION_NEEDED` arises.
 
-### D. Remote Integration Fail-Fast Policy (15s Timeout) & Batch Queries
-- Remote/external MCP calls must enforce a **15-second fail-fast timeout** and gracefully fall back to local workspace files or cache.
-- **Batch Queries**: Prefer batch list endpoints over N+1 per-item queries when scanning portfolios or collections.
-- **Serialized Single-Threaded MCP Protection**: Never run simultaneous parallel calls to stateful or single-threaded MCP servers across workers; serialize via a single worker or `pipeline()`.
+### D. `/usage` Quota Throttle Ladder & Operational Quirks
+* **`/usage` Quota Throttle Ladder**:
+  - `100–40%`: **Nominal** — default v2.0.0 stack (`gemini-4-neon-medium` Main, `neon-high` multi-WP `@planner`, `Med+High` Mode C, Tier-1 `neon-high` → Tier-2 `carbon-high`, gated `@auditor`).
+  - `40–15%`: **Throttle** — switch Main to `gemini-4-neon-low`, pin `@planner` to `gemini-4-neon-medium`, disable speculative `Hydrogen High` Author promotions.
+  - `< 15%`: **Survival** — `swarm(action="model")` → `gemini-4-hydrogen-medium` Main & `Med+Med` Mode C, pause non-blocking `@auditor`, prefer Mode B `run_workflow`.
+  - `0%`: **Cloud Fallback** — switch to `$40` Cloud credits (~20 lean sessions) until rolling 5-hour Ultra window resets.
+* **Operational Quirks**:
+  - UI dropdown resets can trigger **thinking skip** (zero-reasoning instant tool calls) — verify model/effort selection after UI reloads.
+  - `1M` context still degrades on bloated raw logs — prune/stage large outputs in `<artifactDirectoryPath>/scratch/`.
+  - `cachedContents` explicit caching API returns `HTTP 400` — rely on Gemini 4's automatic implicit prefix caching (`> 4,096` tokens, 95% read discount) via same-family `fork="coordinator"`.
 
-### E. Concise Technical & Audit Reporting Standard
-- Formulate audit findings and executive summaries concisely in **1–2 factual, precise sentences** without boilerplate, reflecting verified findings and concrete commitments.
-
-### F. Token-Economics, `[MCP_ONLY]`, & Anti-Bloat Boundaries
-1. **Zero In-Context Code/Log Relay (`MAX_RETURN_MESSAGE_CHARS = 2500`)**: Stage large outputs in `<artifactDirectoryPath>/scratch/` and return compact summaries with file paths and line ranges.
-2. **Artifact-Pointer Prompts (`MAX_SUBAGENT_PROMPT_CHARS = 3500`)**: Pass concise pointers targeting `<artifactDirectoryPath>/kanban/WP-XX_<slug>.md` (and `<artifactDirectoryPath>/scratch/` for dynamic runtime data), never inline large code dumps. Workers read only their assigned card (`kanban/WP-XX_<slug>.md`) and have read-only access to `kanban/**` and `implementation_plan.md` while only `@planner` may write them.
-3. **`[MCP_ONLY]` Mode**: Prefixing `[MCP_ONLY]` in a worker's Role or Prompt locks out `run_command` and `WRITE_FILE_TOOLS`, forcing direct `call_mcp_tool` execution.
-4. **No Transcript Scraping by Execution Workers**: `TypeName="self"` / Swarm authors must never parse prior `transcript.jsonl` files; reserve diagnostic transcript inspection for single-shot `research` scouts.
-5. **Fast-Fail on Permission Stalls (`Sub Steps <= 2`)**: If a worker stalls at step 1–2 on mutating tools, switch to staging in `scratch/` or `ask_question` instead of respawning duplicates.
+### E. Remote Integration Fail-Fast, Concise Reporting & Anti-Bloat Boundaries
+1. **Remote Integration Fail-Fast (15s) & Batch Queries**: Enforce a **15-second fail-fast timeout** on external MCP calls with local fallback; prefer batch endpoints over N+1 queries; serialize stateful/single-threaded MCP calls.
+2. **Concise Technical & Audit Reporting**: Formulate audit findings and executive summaries in **1–2 factual, precise sentences** without boilerplate.
+3. **Zero In-Context Code/Log Relay (`MAX_RETURN_MESSAGE_CHARS = 2500`)** & **Artifact-Pointer Prompts (`MAX_SUBAGENT_PROMPT_CHARS = 3500`)**: Stage large outputs in `<artifactDirectoryPath>/scratch/`, pass concise pointers to `kanban/WP-XX_<slug>.md`.
+4. **`[MCP_ONLY]` Mode**: Prefixing `[MCP_ONLY]` in Role/Prompt locks out `run_command` and `WRITE_FILE_TOOLS`, forcing direct `call_mcp_tool`.
+5. **No Transcript Scraping by Execution Workers**: `TypeName="self"` / Swarm authors must never parse `transcript.jsonl`; reserve diagnostic inspection for single-shot `research` scouts.
+6. **Fast-Fail on Permission Stalls (`Sub Steps <= 2`)**: If a worker stalls at step 1–2 on mutating tools, stage in `scratch/` or `ask_question` instead of respawning duplicates.
